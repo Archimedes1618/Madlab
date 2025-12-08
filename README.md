@@ -1,6 +1,6 @@
 
 <img width="256" height="256" alt="An icon for &#39;Madlab&#39;" src="https://github.com/user-attachments/assets/cd3b8580-aa96-40ce-9456-12b5245237ee" />
-# Madlab 🧪
+
 
 Copyright (C) 2025 David Bentler
 
@@ -17,6 +17,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# Madlab 🧪
 # Introduction
 
 Madlab is an advanced AI development studio designed to streamline the process of dataset management, model training, and evaluation. It combines a robust Node.js/Express backend with a powerful Python-based training engine and a modern React frontend.
@@ -119,5 +120,6 @@ The UI will typically be available at \`http://localhost:5173\`.
 ## License
 
 This project is licensed under the GNU General Public License v3.0 (GPLv3). See the \`LICENSE\` file for details.
+
 
 
