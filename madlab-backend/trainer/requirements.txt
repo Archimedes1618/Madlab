@@ -1,0 +1,13 @@
+torch
+transformers
+accelerate
+peft
+bitsandbytes
+scipy
+huggingface_hub
+llama-cpp-python
+gguf
+protobuf
+sentencepiece
+datasets
+pandas

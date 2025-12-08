@@ -46,7 +46,7 @@ Madlab is an advanced AI development studio designed to streamline the process o
 The backend handles API requests, file management, and orchestration of Python training scripts.
 
 \`\`\`bash
-cd neuroforge-backend
+cd madlab-backend
 
 # Install Node.js dependencies
 npm install
@@ -75,17 +75,47 @@ npm run build
 The frontend provides the user interface.
 
 \`\`\`bash
-cd neuroforge-frontend
+cd madlab-frontend
 
 # Install dependencies
 npm install
 \`\`\`
 
+### 3. Environment Configuration
+
+Both the backend and frontend require environment configuration files.
+
+#### Backend Configuration
+
+Create a `.env` file in `madlab-backend/` (or copy from `.env.example`):
+
+\`\`\`bash
+cd madlab-backend
+copy .env.example .env
+\`\`\`
+
+Edit the `.env` file to configure:
+- `PORT`: Backend server port (default: 8080)
+- `LM_STUDIO_URL`: URL of your LM Studio instance (default: http://192.168.0.73:1234)
+
+#### Frontend Configuration
+
+Create a `.env` file in `madlab-frontend/` (or copy from `.env.example`):
+
+\`\`\`bash
+cd madlab-frontend
+copy .env.example .env
+\`\`\`
+
+Edit the `.env` file to configure:
+- `VITE_API_URL`: Backend API URL (default: http://localhost:8080)
+- `VITE_WS_URL`: WebSocket URL for real-time updates (default: ws://localhost:8080/events)
+
 ## Running the Application
 
 ### Start the Backend
 
-Open a terminal in \`neuroforge-backend\`:
+Open a terminal in \`madlab-backend\`:
 
 \`\`\`bash
 npm start
@@ -95,7 +125,7 @@ The server will start on \`http://localhost:8080\`.
 
 ### Start the Frontend
 
-Open a new terminal in \`neuroforge-frontend\`:
+Open a new terminal in \`madlab-frontend\`:
 
 \`\`\`bash
 npm run dev

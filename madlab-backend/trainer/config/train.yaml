@@ -1,0 +1,22 @@
+model:
+  name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  adapter: lora
+  load_path: models/base
+  save_path: ../models/tuned
+data:
+  path: ../data/Anthropic_AnthropicInterviewer.jsonl
+  max_samples: 500
+  val_split: 0.1
+train:
+  epochs: 1
+  batch_size: 4
+  max_seq_len: 256
+  lr: 0.00005
+  weight_decay: 0
+  warmup_steps: 50
+  grad_clip: 1
+  log_every: 1
+  save_every: 100
+runtime:
+  device: cuda
+  workers: 8
