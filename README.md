@@ -33,7 +33,7 @@ NeuroForge is an advanced AI development studio designed to streamline the proce
 -   **Node.js**: v18 or higher.
 -   **Python**: v3.10 or higher.
 -   **CUDA Toolkit** (Optional): For GPU acceleration (strongly recommended).
--   **LM Studio** (Optional): Required for "Smart Import" features (LLM proxy).
+-   **LM Studio** (Optional but strongly recommended): Required for "Magic Import", "Magic Judge" and Synthetic Data generation features (LLM proxy).
 
 ## Installation
 
@@ -105,9 +105,14 @@ The UI will typically be available at \`http://localhost:5173\`.
 2.  **Prepare Data**:
     *   **Import**: Use "Magic Import" to pull datasets from HuggingFace and automatically format them.
     *   **Upload**: Upload your own \`.jsonl\` files.
+    *   **Generate**: Generate \`.jsonl\` files from a few examples.
 3.  **Configure**: Set epochs, batch size, learning rate, and target device (CUDA/CPU).
 4.  **Train**: Click "Start Training". Monitoring logs will appear in real-time.
-5.  **Evaluate**: Run evaluations to check model performance.
+5.  **Evaluate**: 
+    *   **Static**: Run static evaluations to check model performance.
+    *   **Magic Judge**: Run Magic Judge to evaluate model performance against a validation set.
+6.  **Convert**: Convert model to F16 GGUF format.
+7.  **Quantize**: Quantize model to INT8 format.
 
 ## License
 
