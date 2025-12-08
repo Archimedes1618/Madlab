@@ -35,7 +35,7 @@ const wss = new WebSocketServer({ server, path: '/events' });
 
 wss.on('connection', (ws: WebSocket) => {
     console.log('Client connected');
-    ws.send(JSON.stringify({ type: 'status', payload: { message: 'Connected to NeuroForge Backend' } }));
+    ws.send(JSON.stringify({ type: 'status', payload: { message: 'Connected to Madlab Backend' } }));
 
     ws.on('close', () => {
         console.log('Client disconnected');
@@ -53,5 +53,6 @@ export const broadcast = (data: any) => {
 
 // Start server
 server.listen(port, () => {
-    console.log(`NeuroForge Backend listening on port ${port}`);
+    console.log(`Madlab Backend listening on port ${port}`);
 });
+
