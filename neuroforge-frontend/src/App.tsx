@@ -70,7 +70,7 @@ function App() {
   return (
     <div className="layout">
       <header>
-        <h1>NeuroForge</h1>
+        <h1>Madlab</h1>
         <nav>
           <button
             className={activeTab === 'instillations' ? 'active' : ''}
