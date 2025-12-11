@@ -1,19 +1,20 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { CONFIG } from '../config';
+import { getInstillations } from './instillationsCache';
 
-const INSTILLATIONS_FILE = path.join(__dirname, '../data/instillations.json');
-const DATASET_FILE = path.join(__dirname, '../data/dataset.jsonl');
+const DATASET_FILE = path.join(CONFIG.DATA_DIR, 'dataset.jsonl');
 
 export async function buildDataset(): Promise<number> {
     try {
-        const raw = await fs.readFile(INSTILLATIONS_FILE, 'utf-8');
-        const data = JSON.parse(raw);
+        const data = await getInstillations();
 
-        let lines: string[] = [];
+        const lines: string[] = [];
 
         for (const pair of data.pairs) {
             if (!pair.enabled) continue;
-            // Simple mapping: trigger -> input, response -> target
+            if (!pair.trigger || !pair.response) continue;
+
             const sample = {
                 input: pair.trigger,
                 target: pair.response

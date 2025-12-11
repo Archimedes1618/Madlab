@@ -1,16 +1,40 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { InstillationsPanel } from './components/InstillationsPanel';
 import { TrainingPanel } from './components/TrainingPanel';
 import { MonitoringPanel } from './components/MonitoringPanel';
 import { ChatPanel } from './components/ChatPanel';
-import type { LogLine } from './types';
+import type { LogLine, TrainingMetrics } from './types';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/events';
 
+type TabType = 'instillations' | 'training' | 'monitoring' | 'chat';
+
+// Memoized tab button to prevent unnecessary re-renders
+const TabButton = memo(function TabButton({
+  tab,
+  activeTab,
+  onClick,
+  children
+}: {
+  tab: TabType;
+  activeTab: TabType;
+  onClick: (tab: TabType) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      className={activeTab === tab ? 'active' : ''}
+      onClick={() => onClick(tab)}
+    >
+      {children}
+    </button>
+  );
+});
+
 function App() {
-  const [activeTab, setActiveTab] = useState<'instillations' | 'training' | 'monitoring' | 'chat'>('chat');
+  const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [monitoringLogs, setLogs] = useState<LogLine[]>([]);
-  const [monitoringMetrics, setMetrics] = useState<any>({});
+  const [monitoringMetrics, setMetrics] = useState<TrainingMetrics>({});
   const [monitoringFiles, setFiles] = useState<Record<string, number>>({});
 
   const ws = useRef<WebSocket | null>(null);
@@ -50,7 +74,7 @@ function App() {
           }
           setLogs(prev => [...prev.slice(-100), { id: Date.now() + Math.random(), type: 'log', payload: msg.payload, timestamp }]);
         } else if (msg.type === 'file-size') {
-          setFiles((prev: any) => ({ ...prev, [msg.payload.file]: msg.payload.size }));
+          setFiles(prev => ({ ...prev, [msg.payload.file]: msg.payload.size }));
         } else {
           setLogs(prev => [...prev.slice(-100), { id: Date.now() + Math.random(), type: msg.type, payload: msg.payload, timestamp }]);
         }
@@ -67,35 +91,28 @@ function App() {
     };
   }, []);
 
+  // Memoized tab change handler
+  const handleTabChange = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+  }, []);
+
   return (
     <div className="layout">
       <header>
         <h1>Madlab</h1>
         <nav>
-          <button
-            className={activeTab === 'instillations' ? 'active' : ''}
-            onClick={() => setActiveTab('instillations')}
-          >
+          <TabButton tab="instillations" activeTab={activeTab} onClick={handleTabChange}>
             Instillations
-          </button>
-          <button
-            className={activeTab === 'training' ? 'active' : ''}
-            onClick={() => setActiveTab('training')}
-          >
+          </TabButton>
+          <TabButton tab="training" activeTab={activeTab} onClick={handleTabChange}>
             Training
-          </button>
-          <button
-            className={activeTab === 'monitoring' ? 'active' : ''}
-            onClick={() => setActiveTab('monitoring')}
-          >
+          </TabButton>
+          <TabButton tab="monitoring" activeTab={activeTab} onClick={handleTabChange}>
             Monitoring
-          </button>
-          <button
-            className={activeTab === 'chat' ? 'active' : ''}
-            onClick={() => setActiveTab('chat')}
-          >
+          </TabButton>
+          <TabButton tab="chat" activeTab={activeTab} onClick={handleTabChange}>
             Chat
-          </button>
+          </TabButton>
         </nav>
       </header>
 

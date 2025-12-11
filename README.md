@@ -1,158 +1,268 @@
+<p align="center">
+  <img width="256" height="256" alt="Madlab" src="https://github.com/user-attachments/assets/c877753d-08ca-4c71-a3ec-3195082e0b31" />
+</p>
 
-<img width="512" height="512" alt="An icon for &#39;Madlab&#39; in purple" src="https://github.com/user-attachments/assets/c877753d-08ca-4c71-a3ec-3195082e0b31" />
+<h1 align="center">Madlab</h1>
+<p align="center">Local LLM fine-tuning studio. Import datasets, train models, export to GGUF.</p>
 
+---
 
+## What is this?
 
-Copyright (C) 2025 David Bentler
+Madlab is a self-hosted tool for fine-tuning language models on your own hardware. It handles the annoying parts: dataset formatting, training config, GGUF conversion, and evaluation. Works with any HuggingFace model.
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+**Stack:** React frontend + Node.js backend + Python training scripts (PyTorch/Transformers)
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+---
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+## Quick Start
 
+```bash
+# Clone
+git clone https://github.com/yourusername/madlab.git
+cd madlab
 
-# Introduction
-
-Madlab is an advanced AI development studio designed to streamline the process of dataset management, model training, and evaluation. It combines a robust Node.js/Express backend with a powerful Python-based training engine and a modern React frontend.
-
-## Features
-
--   **Smart Dataset Import**: Automatically normalization of HuggingFace datasets using LLM-driven schema inspection.
--   **Model Training**: Fine-tune LLMs (Llama, Mistral, TinyLlama, etc.) with configurable hyperparameters (LoRA, quantization, epochs, etc.).
--   **Dataset Management**: Upload, clean (deduplicate), and manage datasets locally.
--   **Evaluation**: Automated evaluation of trained models against validation sets.
--   **Model History**: Track and re-use previously configured models.
--   **Dark Mode UI**: sleek, responsive interface.
-
-## Prerequisites
-
--   **Node.js**: v18 or higher.
--   **Python**: v3.10 or higher.
--   **CUDA Toolkit** (Optional): For GPU acceleration (strongly recommended).
--   **LM Studio** (Optional but strongly recommended): Required for "Magic Import", "Magic Judge" and Synthetic Data generation features (LLM proxy).
-
-## Installation
-
-### 1. Backend Setup
-
-The backend handles API requests, file management, and orchestration of Python training scripts.
-
-\`\`\`bash
+# Backend
 cd madlab-backend
-
-# Install Node.js dependencies
 npm install
+cd trainer && python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt && cd ..
+npm run build && npm start
 
-# Setup Python Environment
-# It is recommended to create a virtual environment inside 'trainer/'
+# Frontend (new terminal)
+cd madlab-frontend
+npm install && npm run dev
+```
+
+Open `http://localhost:5173`
+
+---
+
+## Requirements
+
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| Node.js | 18+ | Backend server |
+| Python | 3.10+ | Training scripts |
+| CUDA | 11.8+ | Optional, for GPU training |
+| LM Studio | Any | Optional, for Magic Import/Judge features |
+
+**Hardware:**
+- CPU training: Works, but slow. Fine for small models (<1B params)
+- GPU training: NVIDIA with 8GB+ VRAM recommended
+
+---
+
+## Setup
+
+### Backend
+
+```bash
+cd madlab-backend
+npm install
+```
+
+Python environment (inside `trainer/` folder):
+```bash
 cd trainer
 python -m venv venv
 
-# Activate Virtual Environment (Windows)
+# Windows
 venv\Scripts\activate
 
-# Install Python dependencies
-# Note: For GPU support, ensure you install the correct PyTorch version for your CUDA availability.
+# Linux/Mac
+source venv/bin/activate
+
+# For GPU training - first check your CUDA version: nvidia-smi
+# Then install PyTorch with matching CUDA version BEFORE requirements.txt:
+
+# CUDA 11.8 (older GPUs, GTX 10xx/16xx, RTX 20xx):
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+# CUDA 12.1 (RTX 30xx, RTX 40xx):
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# CUDA 12.4 (RTX 40xx, newer drivers):
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+
+# CUDA 12.6 (latest stable, RTX 40xx/50xx):
+pip install torch --index-url https://download.pytorch.org/whl/cu126
+
+# Then install remaining dependencies:
 pip install -r requirements.txt
 
-# Return to backend root
+# For CPU-only (no GPU, slower but works everywhere):
+pip install -r requirements.txt
+
 cd ..
+```
 
-# Build the Typescript backend
+Build and run:
+```bash
 npm run build
-\`\`\`
-
-### 2. Frontend Setup
-
-The frontend provides the user interface.
-
-\`\`\`bash
-cd madlab-frontend
-
-# Install dependencies
-npm install
-\`\`\`
-
-### 3. Environment Configuration
-
-Both the backend and frontend require environment configuration files.
-
-#### Backend Configuration
-
-Create a `.env` file in `madlab-backend/` (or copy from `.env.example`):
-
-\`\`\`bash
-cd madlab-backend
-copy .env.example .env
-\`\`\`
-
-Edit the `.env` file to configure:
-- `PORT`: Backend server port (default: 8080)
-- `LM_STUDIO_URL`: URL of your LM Studio instance (default: http://192.168.0.73:1234)
-
-#### Frontend Configuration
-
-Create a `.env` file in `madlab-frontend/` (or copy from `.env.example`):
-
-\`\`\`bash
-cd madlab-frontend
-copy .env.example .env
-\`\`\`
-
-Edit the `.env` file to configure:
-- `VITE_API_URL`: Backend API URL (default: http://localhost:8080)
-- `VITE_WS_URL`: WebSocket URL for real-time updates (default: ws://localhost:8080/events)
-
-## Running the Application
-
-### Start the Backend
-
-Open a terminal in \`madlab-backend\`:
-
-\`\`\`bash
 npm start
-\`\`\`
+```
 
-The server will start on \`http://localhost:8080\`.
+Backend runs on `http://localhost:8080`
 
-### Start the Frontend
+### Frontend
 
-Open a new terminal in \`madlab-frontend\`:
-
-\`\`\`bash
+```bash
+cd madlab-frontend
+npm install
 npm run dev
-\`\`\`
+```
 
-The UI will typically be available at \`http://localhost:5173\`.
+Frontend runs on `http://localhost:5173`
 
-## Usage Guide
+---
 
-1.  **Select a Model**: Use the "Base Model" dropdown or browse HuggingFace to pick a model.
-2.  **Prepare Data**:
-    *   **Import**: Use "Magic Import" to pull datasets from HuggingFace and automatically format them.
-    *   **Upload**: Upload your own \`.jsonl\` files.
-    *   **Generate**: Generate \`.jsonl\` files from a few examples.
-3.  **Configure**: Set epochs, batch size, learning rate, and target device (CUDA/CPU).
-4.  **Train**: Click "Start Training". Monitoring logs will appear in real-time.
-5.  **Evaluate**: 
-    *   **Static**: Run static evaluations to check model performance.
-    *   **Magic Judge**: Run Magic Judge to evaluate model performance against a validation set.
-6.  **Convert**: Convert model to F16 GGUF format.
-7.  **Quantize**: Quantize model to INT8 format.
+## Configuration
+
+### Backend (.env)
+
+Create `madlab-backend/.env`:
+```env
+PORT=8080
+LM_STUDIO_URL=http://localhost:1234
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# Optional: Increase timeouts for slower systems (in milliseconds)
+# FETCH_TIMEOUT=60000    # Default: 60s - for HuggingFace API calls
+# LLM_TIMEOUT=300000     # Default: 5min - for LLM inference calls
+```
+
+### Frontend (.env)
+
+Create `madlab-frontend/.env`:
+```env
+VITE_API_URL=http://localhost:8080
+VITE_WS_URL=ws://localhost:8080/events
+```
+
+---
+
+## Usage
+
+### Basic Workflow
+
+1. **Pick a model** - Enter a HuggingFace model ID (e.g., `TinyLlama/TinyLlama-1.1B-Chat-v1.0`) or browse
+2. **Get data** - Three options:
+   - **Import** from HuggingFace datasets
+   - **Upload** your own `.jsonl` files
+   - **Generate** synthetic data from examples
+3. **Configure** - Set epochs, batch size, learning rate, device (CPU/CUDA)
+4. **Train** - Hit start, watch logs in Monitoring tab
+5. **Convert** - Export to GGUF (f16 or q8_0 quantized)
+6. **Evaluate** - Run against validation set
+
+### Dataset Format
+
+Your `.jsonl` files need `input` and `target` fields:
+```json
+{"input": "What is 2+2?", "target": "4"}
+{"input": "Capital of France?", "target": "Paris"}
+```
+
+Magic Import tries to auto-convert other formats using an LLM.
+
+### LM Studio Features
+
+If you have LM Studio running locally:
+- **Magic Import** - Auto-formats any HuggingFace dataset
+- **Magic Judge** - LLM-based evaluation of model outputs
+- **Synthetic Data** - Generate training data from examples
+
+Point `LM_STUDIO_URL` to your instance (default: `http://localhost:1234`)
+
+---
+
+## Project Structure
+
+```
+madlab/
+├── madlab-backend/
+│   ├── src/
+│   │   ├── routes/        # API endpoints
+│   │   ├── services/      # Training, conversion logic
+│   │   ├── utils/         # Security, fetch utilities
+│   │   ├── types/         # TypeScript interfaces
+│   │   ├── config.ts      # Centralized configuration
+│   │   └── server.ts      # Express server
+│   ├── trainer/           # Python scripts
+│   │   ├── train.py       # Fine-tuning script
+│   │   ├── data_tools.py  # Dataset utilities
+│   │   └── evaluate_gguf.py
+│   └── data/              # Datasets stored here
+│
+├── madlab-frontend/
+│   └── src/
+│       ├── components/    # React components
+│       ├── types.ts       # TypeScript interfaces
+│       └── App.tsx
+```
+
+---
+
+## Troubleshooting
+
+### "CUDA not available"
+- Check `nvidia-smi` works in terminal - note the CUDA version shown
+- Make sure you installed PyTorch with matching CUDA support (see Setup section)
+- Reinstall PyTorch with your CUDA version:
+  - CUDA 11.x: `pip install torch --index-url https://download.pytorch.org/whl/cu118`
+  - CUDA 12.1-12.3: `pip install torch --index-url https://download.pytorch.org/whl/cu121`
+  - CUDA 12.4-12.5: `pip install torch --index-url https://download.pytorch.org/whl/cu124`
+  - CUDA 12.6+: `pip install torch --index-url https://download.pytorch.org/whl/cu126`
+- Or just use CPU: set device to "CPU" in the UI (slower but works)
+
+### "Model not found"
+- Check the HuggingFace model ID is correct
+- Some models require authentication: `huggingface-cli login`
+
+### Training is slow
+- Use GPU if possible
+- Reduce `max_seq_len` (default 512)
+- Reduce batch size if running out of memory
+
+### Timeout errors / Operations timing out
+- Increase timeouts in `.env` file (see Configuration section)
+- Set `FETCH_TIMEOUT=120000` for slow HuggingFace API calls
+- Set `LLM_TIMEOUT=600000` for very slow LLM inference
+
+### "Failed to connect to LM Studio"
+- Start LM Studio and load a model
+- Check the URL in `.env` matches your LM Studio server
+- Magic features work without it, just no auto-formatting
+
+### WebSocket disconnects
+- Backend might have crashed, check terminal
+- Refresh the page
+
+### Port already in use
+- Change `PORT` in backend `.env`
+- Update `VITE_API_URL` and `VITE_WS_URL` in frontend `.env` to match
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Server health check |
+| `/datasets` | GET | List all datasets |
+| `/datasets/import` | POST | Import from HuggingFace |
+| `/datasets/upload` | POST | Upload .jsonl file |
+| `/train/start` | POST | Start training |
+| `/train/stop` | POST | Stop training |
+| `/train/status` | GET | Training status |
+| `/train/config` | GET/POST | Get/update training config |
+| `/train/artifacts` | GET | List model artifacts |
+| `/instillations` | GET/POST/PUT/DELETE | Manage instillations |
+
+---
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 (GPLv3). See the \`LICENSE\` file for details.
+GPLv3 - See [LICENSE](LICENSE) file.
 
-
-
-
-
+Copyright (C) 2025 David Bentler

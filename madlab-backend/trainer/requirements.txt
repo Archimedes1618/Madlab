@@ -1,4 +1,22 @@
-torch
+# PyTorch - install BEFORE other requirements for GPU training
+# Check your CUDA version with: nvidia-smi
+#
+# CUDA 11.8 (older GPUs, GTX 10xx/16xx, RTX 20xx):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu118
+#
+# CUDA 12.1 (RTX 30xx, RTX 40xx):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#
+# CUDA 12.4 (RTX 40xx, newer drivers):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#
+# CUDA 12.6 (latest stable, RTX 40xx/50xx):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+#
+# CPU-only (no GPU, slower but works everywhere):
+#   pip install torch
+#
+torch>=2.0.0
 transformers
 accelerate
 peft

@@ -1,48 +1,36 @@
 import express from 'express';
 import fs from 'fs/promises';
-import path from 'path';
+import { CONFIG } from '../config';
+import { invalidateCache, getInstillations } from '../services/instillationsCache';
+import type { InstillationPair, InstillationsData } from '../types';
 
 const router = express.Router();
-const DATA_FILE = path.join(__dirname, '../data/instillations.json');
 
-// Interface for Instillation Pair
-interface InstillationPair {
-    id: string;
-    trigger: string;
-    match: {
-        type: 'exact' | 'regex' | 'semantic';
-        caseInsensitive?: boolean;
-        normalizeWhitespace?: boolean;
-    };
-    response: string;
-    createdAt: string;
-    updatedAt: string;
-    enabled: boolean;
-}
-
-interface InstillationsData {
-    version: string;
-    pairs: InstillationPair[];
-}
+// Write lock to prevent race conditions on concurrent writes
+let writeLock = Promise.resolve();
 
 // Helper to read data
 async function readData(): Promise<InstillationsData> {
     try {
-        const data = await fs.readFile(DATA_FILE, 'utf-8');
+        const data = await fs.readFile(CONFIG.INSTILLATIONS_PATH, 'utf-8');
         return JSON.parse(data);
-    } catch (err) {
-        // If file doesn't exist, return default
+    } catch {
         return { version: '1.0', pairs: [] };
     }
 }
 
-// Helper to write data
-async function writeData(data: InstillationsData) {
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
+// Helper to write data - uses lock to prevent race conditions, invalidates cache after write
+async function writeData(data: InstillationsData): Promise<void> {
+    const writeOperation = writeLock.then(async () => {
+        await fs.writeFile(CONFIG.INSTILLATIONS_PATH, JSON.stringify(data, null, 2));
+        invalidateCache();
+    });
+    writeLock = writeOperation.catch(() => {}); // Prevent lock from breaking on error
+    return writeOperation;
 }
 
 // GET /instillations
-router.get('/', async (req, res) => {
+router.get('/', async (_req, res) => {
     const data = await readData();
     res.json(data);
 });
@@ -51,7 +39,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const pair: InstillationPair = {
         ...req.body,
-        id: req.body.id || crypto.randomUUID(), // Node 19+ or polyfill, assuming sufficient node ver or uuid package. Use simple random string if not.
+        id: req.body.id || crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
@@ -72,7 +60,7 @@ router.put('/:id', async (req, res) => {
     const data = await readData();
     const idx = data.pairs.findIndex(p => p.id === req.params.id);
     if (idx === -1) {
-        return res.status(404).json({ error: 'Not found' });
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
     }
     data.pairs[idx] = { ...data.pairs[idx], ...req.body, updatedAt: new Date().toISOString() };
     await writeData(data);
@@ -84,20 +72,19 @@ router.delete('/:id', async (req, res) => {
     const data = await readData();
     const idx = data.pairs.findIndex(p => p.id === req.params.id);
     if (idx === -1) {
-        return res.status(404).json({ error: 'Not found' });
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
     }
     const deleted = data.pairs.splice(idx, 1);
     await writeData(data);
     res.json(deleted[0]);
 });
 
-// POST /resolve
-// Check overrides
+// POST /resolve - Check overrides (uses cache for performance)
 router.post('/resolve', async (req, res) => {
     const { input } = req.body;
     if (!input) return res.json({ response: null });
 
-    const data = await readData();
+    const data = await getInstillations();
     const activePairs = data.pairs.filter(p => p.enabled);
 
     for (const pair of activePairs) {
@@ -116,16 +103,16 @@ router.post('/resolve', async (req, res) => {
 
         if (pair.match.type === 'exact') {
             if (userInput === trigger) {
-                return res.json({ response: pair.response, matchedV: pair.id });
+                return res.json({ response: pair.response, matchedId: pair.id });
             }
         } else if (pair.match.type === 'regex') {
             try {
                 const re = new RegExp(pair.trigger, pair.match.caseInsensitive ? 'i' : '');
                 if (re.test(userInput)) {
-                    return res.json({ response: pair.response, matchedV: pair.id });
+                    return res.json({ response: pair.response, matchedId: pair.id });
                 }
-            } catch (e) {
-                console.error('Regex error', e);
+            } catch (regexErr) {
+                console.warn('Invalid regex pattern:', pair.trigger, regexErr);
             }
         }
     }

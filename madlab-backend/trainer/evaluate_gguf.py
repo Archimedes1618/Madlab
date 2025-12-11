@@ -43,11 +43,19 @@ def evaluate():
 
     correct_count = 0
     total_count = 0
+    skipped_count = 0
 
     for i, line in enumerate(lines):
         if not line.strip(): continue
-        
-        sample = json.loads(line)
+
+        # Safely parse JSON
+        try:
+            sample = json.loads(line)
+        except json.JSONDecodeError as e:
+            print(json.dumps({"warning": f"Skipping invalid JSON at line {i+1}: {str(e)}"}))
+            skipped_count += 1
+            continue
+
         prompt = sample.get("input", "")
         target = sample.get("target", "")
         
@@ -82,8 +90,12 @@ def evaluate():
         "accuracy": accuracy,
         "total_samples": total_count,
         "correct_samples": correct_count,
+        "skipped_samples": skipped_count,
         "samples": results
     }
+
+    if skipped_count > 0:
+        print(json.dumps({"warning": f"Skipped {skipped_count} samples due to parse errors"}))
 
     # Ensure output dir exists
     os.makedirs(os.path.dirname(out_path), exist_ok=True)

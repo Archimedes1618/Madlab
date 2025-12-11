@@ -25,6 +25,15 @@ export function ModelBrowser({ onSelect, onClose }: Props) {
         searchModels('llama'); // default search to populate list
     }, []);
 
+    // Escape key to close modal
+    useEffect(() => {
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, [onClose]);
+
     const searchModels = async (q: string) => {
         setLoading(true);
         try {
@@ -41,19 +50,24 @@ export function ModelBrowser({ onSelect, onClose }: Props) {
     };
 
     return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center',
-            zIndex: 1000
-        }}>
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="model-browser-title"
+            style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center',
+                zIndex: 1000
+            }}
+        >
             <div style={{
                 background: '#1e293b', width: '800px', maxHeight: '80vh',
                 borderRadius: '8px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem',
                 border: '1px solid #334155'
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2>Hugging Face Model Browser</h2>
-                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
+                    <h2 id="model-browser-title">Hugging Face Model Browser</h2>
+                    <button onClick={onClose} aria-label="Close dialog" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>

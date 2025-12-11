@@ -1,25 +1,42 @@
-import { useRef, useEffect } from 'react';
-import type { LogLine } from '../types';
+import { useRef, useEffect, memo } from 'react';
+import type { LogLine, TrainingMetrics } from '../types';
 
 interface MonitoringPanelProps {
     logs: LogLine[];
-    metrics: any;
+    metrics: TrainingMetrics;
     files: Record<string, number>;
 }
 
-export function MonitoringPanel({ logs, metrics, files }: MonitoringPanelProps) {
+// Memoized metric card component
+const MetricCard = memo(function MetricCard({ value, label }: { value: string; label: string }) {
+    return (
+        <div className="metric-card">
+            <div className="metric-val">{value}</div>
+            <div className="metric-label">{label}</div>
+        </div>
+    );
+});
+
+// Memoized log entry component
+const LogEntry = memo(function LogEntry({ log }: { log: LogLine }) {
+    return (
+        <div style={{ marginBottom: '4px', whiteSpace: 'pre-wrap' }}>
+            <span style={{ color: '#64748b', marginRight: '8px' }}>[{log.timestamp}]</span>
+            <span style={{ color: log.type === 'log' ? '#e2e8f0' : '#ec4899' }}>
+                {typeof log.payload === 'string' ? log.payload : JSON.stringify(log.payload)}
+            </span>
+        </div>
+    );
+});
+
+export const MonitoringPanel = memo(function MonitoringPanel({ logs, metrics, files }: MonitoringPanelProps) {
     const logsEndRef = useRef<HTMLDivElement>(null);
 
-    // Removed internal WebSocket logic
-    // We scroll on log updates only if valid
+    // Single scroll effect (removed duplicate)
     useEffect(() => {
         if (logs.length > 0) {
             logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [logs]);
-
-    useEffect(() => {
-        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [logs]);
 
     return (
@@ -28,22 +45,10 @@ export function MonitoringPanel({ logs, metrics, files }: MonitoringPanelProps) 
 
             {/* Metrics Cards */}
             <div className="card-grid">
-                <div className="metric-card">
-                    <div className="metric-val">{metrics.epoch?.toFixed(2) || '-'}</div>
-                    <div className="metric-label">Epoch</div>
-                </div>
-                <div className="metric-card">
-                    <div className="metric-val">{metrics.loss?.toFixed(4) || '-'}</div>
-                    <div className="metric-label">Loss</div>
-                </div>
-                <div className="metric-card">
-                    <div className="metric-val">{metrics.learning_rate?.toExponential(2) || '-'}</div>
-                    <div className="metric-label">Learning Rate</div>
-                </div>
-                <div className="metric-card">
-                    <div className="metric-val">{metrics.grad_norm?.toFixed(2) || '-'}</div>
-                    <div className="metric-label">Grad Norm</div>
-                </div>
+                <MetricCard value={metrics.epoch?.toFixed(2) || '-'} label="Epoch" />
+                <MetricCard value={metrics.loss?.toFixed(4) || '-'} label="Loss" />
+                <MetricCard value={metrics.learning_rate?.toExponential(2) || '-'} label="Learning Rate" />
+                <MetricCard value={metrics.grad_norm?.toFixed(2) || '-'} label="Grad Norm" />
             </div>
 
             {/* File Sizes */}
@@ -61,16 +66,11 @@ export function MonitoringPanel({ logs, metrics, files }: MonitoringPanelProps) 
             {/* Logs */}
             <div style={{ flex: 1, background: '#0f111a', border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem', overflowY: 'auto', minHeight: '300px', fontFamily: 'monospace', fontSize: '0.85rem' }}>
                 {logs.map(log => (
-                    <div key={log.id} style={{ marginBottom: '4px', whiteSpace: 'pre-wrap' }}>
-                        <span style={{ color: '#64748b', marginRight: '8px' }}>[{log.timestamp}]</span>
-                        <span style={{ color: log.type === 'log' ? '#e2e8f0' : '#ec4899' }}>
-                            {typeof log.payload === 'string' ? log.payload : JSON.stringify(log.payload)}
-                        </span>
-                    </div>
+                    <LogEntry key={log.id} log={log} />
                 ))}
                 <div ref={logsEndRef} />
             </div>
 
         </div>
     );
-}
+});

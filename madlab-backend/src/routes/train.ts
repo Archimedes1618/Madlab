@@ -1,16 +1,20 @@
 import express from 'express';
+import { promises as fsPromises } from 'fs';
+import fs from 'fs';
+import yaml from 'js-yaml';
 import { startTraining, stopTraining, getStatus } from '../services/processManager';
 import { buildDataset } from '../services/datasetBuilder';
 import { convertToGGUF, evaluateGGUF, judgeModel } from '../services/modelConverter';
-import path from 'path';
-import fs from 'fs';
+import { CONFIG } from '../config';
+import { isValidQuantization, isValidSharpness, isValidEvalLimit, ALLOWED_QUANTIZATIONS } from '../utils/validation';
+import type { TrainingConfig, ModelArtifact } from '../types';
 
 const router = express.Router();
 
 // POST /train/start
 router.post('/start', async (req, res) => {
     try {
-        const { configPath } = req.body; // e.g., 'config/train.yaml'
+        const { configPath } = req.body;
 
         // 1. Build dataset
         const count = await buildDataset();
@@ -20,19 +24,20 @@ router.post('/start', async (req, res) => {
         startTraining(configPath || 'config/train.yaml');
 
         res.json({ message: 'Training started', datasetSize: count });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Training start failed';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 
 // POST /train/stop
-router.post('/stop', (req, res) => {
+router.post('/stop', (_req, res) => {
     stopTraining();
     res.json({ message: 'Training stopped' });
 });
 
 // GET /train/status
-router.get('/status', (req, res) => {
+router.get('/status', (_req, res) => {
     res.json(getStatus());
 });
 
@@ -40,10 +45,20 @@ router.get('/status', (req, res) => {
 router.post('/convert', async (req, res) => {
     try {
         const { modelName, quantization } = req.body;
-        await convertToGGUF({ modelName: modelName || 'tuned', quantization: quantization || 'q8_0' });
+        const quant = quantization || 'q8_0';
+
+        // Validate quantization type
+        if (!isValidQuantization(quant)) {
+            return res.status(400).json({
+                error: { code: 'INVALID_PARAM', message: `Invalid quantization. Allowed: ${ALLOWED_QUANTIZATIONS.join(', ')}` }
+            });
+        }
+
+        await convertToGGUF({ modelName: modelName || 'tuned', quantization: quant });
         res.json({ message: 'Conversion started' });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Conversion failed';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 
@@ -51,10 +66,28 @@ router.post('/convert', async (req, res) => {
 router.post('/evaluate', async (req, res) => {
     try {
         const { modelName, quantization, limit } = req.body;
-        await evaluateGGUF(modelName || 'tuned', quantization || 'q8_0', limit ? parseFloat(limit) : 1.0);
+        const quant = quantization || 'q8_0';
+        const limitNum = limit ? parseFloat(limit) : 1.0;
+
+        // Validate quantization type
+        if (!isValidQuantization(quant)) {
+            return res.status(400).json({
+                error: { code: 'INVALID_PARAM', message: `Invalid quantization. Allowed: ${ALLOWED_QUANTIZATIONS.join(', ')}` }
+            });
+        }
+
+        // Validate limit (0.01 to 1.0)
+        if (!isValidEvalLimit(limitNum)) {
+            return res.status(400).json({
+                error: { code: 'INVALID_PARAM', message: 'Limit must be between 0.01 and 1.0' }
+            });
+        }
+
+        await evaluateGGUF(modelName || 'tuned', quant, limitNum);
         res.json({ message: 'Evaluation started' });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Evaluation failed';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 
@@ -62,91 +95,119 @@ router.post('/evaluate', async (req, res) => {
 router.post('/judge', async (req, res) => {
     try {
         const { modelName, quantization, limit, sharpness } = req.body;
+        const quant = quantization || 'q8_0';
+        const limitNum = limit ? parseFloat(limit) : 0.2;
+        const sharpnessNum = sharpness ? parseInt(sharpness, 10) : 50;
+
+        // Validate quantization type
+        if (!isValidQuantization(quant)) {
+            return res.status(400).json({
+                error: { code: 'INVALID_PARAM', message: `Invalid quantization. Allowed: ${ALLOWED_QUANTIZATIONS.join(', ')}` }
+            });
+        }
+
+        // Validate limit (0.01 to 1.0)
+        if (!isValidEvalLimit(limitNum)) {
+            return res.status(400).json({
+                error: { code: 'INVALID_PARAM', message: 'Limit must be between 0.01 and 1.0' }
+            });
+        }
+
+        // Validate sharpness (0-100)
+        if (!isValidSharpness(sharpnessNum)) {
+            return res.status(400).json({
+                error: { code: 'INVALID_PARAM', message: 'Sharpness must be between 0 and 100' }
+            });
+        }
+
         // Run in background (don't await fully to return response)
         judgeModel(
             modelName || 'tuned',
-            quantization || 'q8_0',
-            limit ? parseFloat(limit) : 0.2, // Default 20%
-            sharpness ? parseInt(sharpness) : 50
+            quant,
+            limitNum,
+            sharpnessNum
         ).catch(e => console.error('Judge Async Error:', e));
 
         res.json({ message: 'Magic Judge started' });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Judge start failed';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 
 // GET /train/artifacts
-// Let's just use readdirSync for MVP
-const MODELS_DIR = path.join(__dirname, '../../models');
-const CONFIG_PATH = path.join(__dirname, '../../trainer/config/train.yaml');
-import yaml from 'js-yaml';
-
-router.get('/artifacts', (req, res) => {
+router.get('/artifacts', async (_req, res) => {
     try {
-        if (!fs.existsSync(MODELS_DIR)) {
+        if (!fs.existsSync(CONFIG.MODELS_DIR)) {
             return res.json([]);
         }
-        const files = fs.readdirSync(MODELS_DIR).filter(f => f.endsWith('.gguf') || f.endsWith('.json'));
-        res.json(files.map(f => ({ name: f, url: `/models/${f}` }))); // Serve statically?
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        const files = fs.readdirSync(CONFIG.MODELS_DIR).filter(f => f.endsWith('.gguf') || f.endsWith('.json'));
+        const artifacts: ModelArtifact[] = files.map(f => ({ name: f, url: `/models/${f}` }));
+        res.json(artifacts);
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Failed to list artifacts';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 
 // GET /train/config
-router.get('/config', (req, res) => {
+router.get('/config', async (_req, res) => {
     try {
-        if (!fs.existsSync(CONFIG_PATH)) {
-            return res.status(404).json({ error: 'Config not found' });
+        if (!fs.existsSync(CONFIG.CONFIG_PATH)) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Config not found' } });
         }
-        const file = fs.readFileSync(CONFIG_PATH, 'utf8');
-        const doc = yaml.load(file);
+        const file = await fsPromises.readFile(CONFIG.CONFIG_PATH, 'utf8');
+        const doc = yaml.load(file) as TrainingConfig;
         res.json(doc);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Failed to read config';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 
-
-
 // Model History Logic
-const HISTORY_PATH = path.join(__dirname, '../../data/model_history.json');
-function updateModelHistory(modelName: string) {
+async function updateModelHistory(modelName: string): Promise<void> {
     try {
         let history: string[] = [];
-        if (fs.existsSync(HISTORY_PATH)) {
-            history = JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8'));
+        if (fs.existsSync(CONFIG.HISTORY_PATH)) {
+            const data = await fsPromises.readFile(CONFIG.HISTORY_PATH, 'utf8');
+            history = JSON.parse(data);
         }
         if (!history.includes(modelName)) {
-            history.unshift(modelName); // Add to top
-            fs.writeFileSync(HISTORY_PATH, JSON.stringify(history.slice(0, 20)), 'utf8'); // Keep last 20
+            history.unshift(modelName);
+            await fsPromises.writeFile(CONFIG.HISTORY_PATH, JSON.stringify(history.slice(0, 20)), 'utf8');
         }
-    } catch (e) { console.error('Failed to update history', e); }
+    } catch (e) {
+        console.error('Failed to update history', e);
+    }
 }
 
-router.get('/history', (req, res) => {
+router.get('/history', async (_req, res) => {
     try {
-        if (!fs.existsSync(HISTORY_PATH)) return res.json([]);
-        res.json(JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8')));
-    } catch (e) { res.json([]); }
+        if (!fs.existsSync(CONFIG.HISTORY_PATH)) return res.json([]);
+        const data = await fsPromises.readFile(CONFIG.HISTORY_PATH, 'utf8');
+        res.json(JSON.parse(data));
+    } catch {
+        res.json([]);
+    }
 });
 
 // POST /train/config
-router.post('/config', (req, res) => {
+router.post('/config', async (req, res) => {
     try {
-        const newConfig = req.body;
+        const newConfig = req.body as TrainingConfig;
         const yamlStr = yaml.dump(newConfig);
-        fs.writeFileSync(CONFIG_PATH, yamlStr, 'utf8');
+        await fsPromises.writeFile(CONFIG.CONFIG_PATH, yamlStr, 'utf8');
 
         // Update history
         if (newConfig.model && newConfig.model.name) {
-            updateModelHistory(newConfig.model.name);
+            await updateModelHistory(newConfig.model.name);
         }
 
         res.json({ message: 'Config updated' });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Failed to save config';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 

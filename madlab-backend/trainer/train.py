@@ -1,10 +1,25 @@
 # train.py
-import json, argparse, torch, math, sys, os
+import json, argparse, torch, math, sys, os, random
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
 
 # Ensure stdout is unbuffered for real-time logging
 sys.stdout.reconfigure(line_buffering=True)
+
+# Set random seed for reproducibility
+SEED = 42
+random.seed(SEED)
+torch.manual_seed(SEED)
+
+def get_config_value(cfg, keys, default):
+    """Safely get nested config value with default fallback."""
+    try:
+        value = cfg
+        for key in keys:
+            value = value[key]
+        return value
+    except (KeyError, TypeError):
+        return default
 
 class PairDataset(Dataset):
     def __init__(self, path, tokenizer, max_len=512):
@@ -104,15 +119,23 @@ def main():
         print(json.dumps({"error": "Dataset is empty"}))
         sys.exit(1)
 
+    # FIX: Shuffle indices before splitting to prevent data leakage
+    # Previously, validation was always the first N samples which could bias results
+    indices = list(range(len(ds)))
+    random.shuffle(indices)
+
     n_val = max(1, int(len(ds)*cfg['data']['val_split']))
     # Ensure we don't take more than we have
     if n_val >= len(ds): n_val = 0
-    
-    val_ds = torch.utils.data.Subset(ds, range(n_val))
-    train_ds = torch.utils.data.Subset(ds, range(n_val, len(ds)))
-    
+
+    val_indices = indices[:n_val]
+    train_indices = indices[n_val:]
+
+    val_ds = torch.utils.data.Subset(ds, val_indices)
+    train_ds = torch.utils.data.Subset(ds, train_indices)
+
     # Save validation split for evaluation
-    val_samples = [ds.samples[i] for i in range(n_val)]
+    val_samples = [ds.samples[i] for i in val_indices]
     val_path = os.path.join(os.path.dirname(data_path), 'val.jsonl')
     with open(val_path, 'w', encoding='utf-8') as f:
         for s in val_samples:
@@ -158,7 +181,13 @@ def main():
             with torch.amp.autocast('cuda', enabled=use_cuda):
                 out = model(input_ids=input_ids, labels=labels)
                 loss = out.loss
-            
+
+            # NaN/Inf check to prevent training corruption
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(json.dumps({"warning": f"NaN/Inf loss detected at step {step}, skipping batch"}))
+                model.zero_grad()
+                continue
+
             scaler.scale(loss).backward()
             
             scaler.unscale_(opt)
@@ -195,7 +224,12 @@ def main():
     print(json.dumps({"message": f"Saving model to {save_path}"}))
     model.save_pretrained(save_path)
     tok.save_pretrained(save_path)
-    print(json.dumps({"message": "Training complete", "saved_to": save_path}))
+
+    # GPU memory cleanup
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
+
+    print(json.dumps({"status": "complete", "message": "Training complete", "saved_to": save_path}))
 
 if __name__ == '__main__':
     main()
