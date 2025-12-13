@@ -75,25 +75,33 @@ def cmd_import(args):
             
     try:
         ds = load_dataset(args.repo, split=args.split)
-        
+
         outfile = os.path.join(args.out_dir, f"{args.repo.replace('/', '_')}.jsonl")
-        
+
         count = 0
+        skipped = 0
         with safe_open_w(outfile) as f:
             for item in ds:
                 if transform_func:
                     try:
                         norm = transform_func(item)
                     except Exception as e:
-                        continue # Skip bad rows?
+                        skipped += 1
+                        continue
                 else:
                     norm = normalize_columns(item)
-                
+
                 if norm and norm.get('input') and norm.get('target'):
                     f.write(json.dumps(norm) + '\n')
                     count += 1
-                    
-        print(json.dumps({"message": "Import successful", "filename": os.path.basename(outfile), "count": count}))
+                else:
+                    skipped += 1
+
+        result = {"message": "Import successful", "filename": os.path.basename(outfile), "count": count}
+        if skipped > 0:
+            result["skipped"] = skipped
+            print(json.dumps({"warning": f"Skipped {skipped} rows (missing input/target or transform error)"}))
+        print(json.dumps(result))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)

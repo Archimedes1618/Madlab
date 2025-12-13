@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -10,19 +11,53 @@ import datasetsRouter from './routes/datasets';
 import { modelsRouter } from './routes/models';
 import proxyRouter from './routes/proxy';
 import { startFileMonitor } from './services/fileMonitor';
+import { CONFIG } from './config';
+import type { WebSocketMessage } from './types';
 
 // Load environment variables
 dotenv.config();
 
+// Ensure required directories exist on startup
+const requiredDirs = [CONFIG.DATA_DIR, CONFIG.MODELS_DIR];
+for (const dir of requiredDirs) {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`Created directory: ${dir}`);
+    }
+}
+
+// Ensure instillations.json exists with default content
+if (!fs.existsSync(CONFIG.INSTILLATIONS_PATH)) {
+    fs.writeFileSync(
+        CONFIG.INSTILLATIONS_PATH,
+        JSON.stringify({ version: '1.0', pairs: [] }, null, 2)
+    );
+    console.log('Created default instillations.json');
+}
+
 const app = express();
-const port = parseInt(process.env.PORT || '8080', 10);
 
-// Start services
-startFileMonitor();
+// Start services (async initialization)
+(async () => {
+    await startFileMonitor();
+})();
 
-// Middleware
-app.use(cors());
+// Middleware - CORS with specific origins
+app.use(cors({
+    origin: CONFIG.ALLOWED_ORIGINS,
+    credentials: true
+}));
 app.use(bodyParser.json());
+
+// Health check endpoint
+app.get('/health', (_req, res) => {
+    res.json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+    });
+});
 
 // Routes
 app.use('/instillations', instillationsRouter);
@@ -46,8 +81,8 @@ wss.on('connection', (ws: WebSocket) => {
     });
 });
 
-// Broadcast helper for other modules
-export const broadcast = (data: any) => {
+// Broadcast helper for other modules - now properly typed
+export const broadcast = (data: WebSocketMessage) => {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify(data));
@@ -56,7 +91,6 @@ export const broadcast = (data: any) => {
 };
 
 // Start server
-server.listen(port, () => {
-    console.log(`Madlab Backend listening on port ${port}`);
+server.listen(CONFIG.PORT, () => {
+    console.log(`Madlab Backend listening on port ${CONFIG.PORT}`);
 });
-

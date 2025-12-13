@@ -1,35 +1,24 @@
 import express from 'express';
-import fetch from 'node-fetch'; // Requires node-fetch@2 for CommonJS or dynamic import. Using built-in fetch if Node 18+
-import fs from 'fs/promises';
-import path from 'path';
-
-// Helper to read data (duplicated from instillations.ts, ideally should be a shared service)
-const DATA_FILE = path.join(__dirname, '../data/instillations.json');
-async function readInstillations() {
-    try {
-        const data = await fs.readFile(DATA_FILE, 'utf-8');
-        return JSON.parse(data);
-    } catch {
-        return { pairs: [] };
-    }
-}
+import { fetchWithTimeout } from '../utils/fetch';
+import { getInstillations } from '../services/instillationsCache';
+import { CONFIG } from '../config';
+import type { InstillationPair, LMStudioResponse } from '../types';
 
 const router = express.Router();
-const UPSTREAM_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
 
 router.post('/chat/completions', async (req, res) => {
     try {
         const { messages, stream } = req.body;
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            return res.status(400).json({ error: 'Invalid messages' });
+            return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid messages' } });
         }
 
         const lastMessage = messages[messages.length - 1];
         const input = lastMessage.content;
 
-        // 1. Check Instillations
-        const data = await readInstillations();
-        const activePairs = data.pairs.filter((p: any) => p.enabled);
+        // 1. Check Instillations (using cache)
+        const data = await getInstillations();
+        const activePairs = data.pairs.filter((p: InstillationPair) => p.enabled);
 
         for (const pair of activePairs) {
             let trigger = pair.trigger;
@@ -51,7 +40,9 @@ router.post('/chat/completions', async (req, res) => {
                 try {
                     const re = new RegExp(pair.trigger, pair.match.caseInsensitive ? 'i' : '');
                     if (re.test(userInput)) matched = true;
-                } catch { }
+                } catch (regexErr) {
+                    console.warn('Invalid regex pattern:', pair.trigger, regexErr);
+                }
             }
 
             if (matched) {
@@ -73,14 +64,13 @@ router.post('/chat/completions', async (req, res) => {
         }
 
         // 2. Proxy to LM Studio
-        console.log(`[Proxy] Forwarding to ${UPSTREAM_URL}`);
+        console.log(`[Proxy] Forwarding to ${CONFIG.LM_STUDIO_URL}`);
 
-        // Note: fetch in Node 18+ is global.
-        const upstreamRes = await fetch(`${UPSTREAM_URL}/v1/chat/completions`, {
+        const upstreamRes = await fetchWithTimeout(`${CONFIG.LM_STUDIO_URL}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req.body)
-        });
+        }, CONFIG.LLM_TIMEOUT);
 
         if (!upstreamRes.ok) {
             const err = await upstreamRes.text();
@@ -93,10 +83,7 @@ router.post('/chat/completions', async (req, res) => {
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
             if (upstreamRes.body) {
-                // node-fetch v3 or built-in web streams
-                // If using built-in fetch (Node 18), body is a ReadableStream.
-                // We need to pipe it to res (Writable).
-                // @ts-ignore
+                // @ts-ignore - node-fetch body type
                 const reader = upstreamRes.body.getReader();
                 while (true) {
                     const { done, value } = await reader.read();
@@ -106,13 +93,14 @@ router.post('/chat/completions', async (req, res) => {
                 res.end();
             }
         } else {
-            const json = await upstreamRes.json();
+            const json = await upstreamRes.json() as LMStudioResponse;
             res.json(json);
         }
 
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error('[Proxy] Error:', e);
-        res.status(500).json({ error: e.message });
+        const message = e instanceof Error ? e.message : 'Proxy error';
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
 });
 

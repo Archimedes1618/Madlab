@@ -21,57 +21,116 @@ export function InstillationsPanel() {
     const [matchType, setMatchType] = useState<'exact' | 'regex'>('exact');
     const [testInput, setTestInput] = useState('');
     const [testResult, setTestResult] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchItems();
     }, []);
 
+    // Clear error after 5 seconds
+    useEffect(() => {
+        if (error) {
+            const timer = setTimeout(() => setError(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [error]);
+
     const fetchItems = async () => {
-        const res = await fetch(`${API_URL}/instillations`);
-        const data = await res.json();
-        setItems(data.pairs);
+        try {
+            const res = await fetch(`${API_URL}/instillations`);
+            if (!res.ok) throw new Error('Failed to fetch rules');
+            const data = await res.json();
+            setItems(data.pairs || []);
+        } catch (e) {
+            setError('Failed to load rules. Please check your connection.');
+            console.error(e);
+        }
     };
 
     const handleCreate = async () => {
-        if (!newTrigger || !newResponse) return;
-        const payload = {
-            trigger: newTrigger,
-            response: newResponse,
-            match: {
-                type: matchType,
-                caseInsensitive: true,
-                normalizeWhitespace: true
-            },
-            enabled: true
-        };
-        await fetch(`${API_URL}/instillations`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        setNewTrigger('');
-        setNewResponse('');
-        fetchItems();
+        if (!newTrigger || !newResponse) {
+            setError('Trigger and response are required.');
+            return;
+        }
+        try {
+            const payload = {
+                trigger: newTrigger,
+                response: newResponse,
+                match: {
+                    type: matchType,
+                    caseInsensitive: true,
+                    normalizeWhitespace: true
+                },
+                enabled: true
+            };
+            const res = await fetch(`${API_URL}/instillations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('Failed to create rule');
+            setNewTrigger('');
+            setNewResponse('');
+            fetchItems();
+        } catch (e) {
+            setError('Failed to create rule. Please try again.');
+            console.error(e);
+        }
     };
 
     const handleDelete = async (id: string) => {
-        await fetch(`${API_URL}/instillations/${id}`, { method: 'DELETE' });
-        fetchItems();
+        try {
+            const res = await fetch(`${API_URL}/instillations/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete rule');
+            fetchItems();
+        } catch (e) {
+            setError('Failed to delete rule. Please try again.');
+            console.error(e);
+        }
     };
 
     const handleTest = async () => {
-        const res = await fetch(`${API_URL}/instillations/resolve`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ input: testInput })
-        });
-        const data = await res.json();
-        setTestResult(data.response || 'No match');
+        try {
+            const res = await fetch(`${API_URL}/instillations/resolve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ input: testInput })
+            });
+            if (!res.ok) throw new Error('Failed to test resolver');
+            const data = await res.json();
+            setTestResult(data.response || 'No match');
+        } catch (e) {
+            setError('Failed to test resolver. Please try again.');
+            console.error(e);
+        }
     };
 
     return (
         <div className="panel">
             <h2>Instillations</h2>
+
+            {error && (
+                <div style={{
+                    background: '#7f1d1d',
+                    color: '#fecaca',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '6px',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                }}>
+                    <span>{error}</span>
+                    <button
+                        onClick={() => setError(null)}
+                        aria-label="Dismiss error"
+                        style={{ background: 'transparent', border: 'none', color: '#fecaca', cursor: 'pointer', fontSize: '1.2rem' }}
+                    >
+                        &times;
+                    </button>
+                </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                     <h3>Add New Rule</h3>

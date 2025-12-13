@@ -1,14 +1,34 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
+import type { ChatMessage } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
-interface Message {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
+interface ChatCompletionResponse {
+    choices?: Array<{
+        message: ChatMessage;
+    }>;
 }
 
+// Memoized message bubble component
+const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage }) {
+    return (
+        <div style={{
+            alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+            maxWidth: '80%',
+            background: msg.role === 'user' ? 'var(--primary)' : 'var(--card-bg)',
+            padding: '0.8rem 1.2rem',
+            borderRadius: '12px',
+            border: msg.role === 'user' ? 'none' : '1px solid var(--border)',
+            whiteSpace: 'pre-wrap'
+        }}>
+            <div style={{ fontSize: '0.75rem', opacity: 0.7, marginBottom: '0.25rem' }}>{msg.role.toUpperCase()}</div>
+            {msg.content}
+        </div>
+    );
+});
+
 export function ChatPanel() {
-    const [messages, setMessages] = useState<Message[]>([
+    const [messages, setMessages] = useState<ChatMessage[]>([
         { role: 'system', content: 'You are a helpful AI assistant connected via Madlab.' }
     ]);
     const [input, setInput] = useState('');
@@ -23,10 +43,10 @@ export function ChatPanel() {
         scrollToBottom();
     }, [messages]);
 
-    const handleSend = async () => {
+    const handleSend = useCallback(async () => {
         if (!input.trim() || loading) return;
 
-        const userMsg: Message = { role: 'user', content: input };
+        const userMsg: ChatMessage = { role: 'user', content: input };
         const newHistory = [...messages, userMsg];
         setMessages(newHistory);
         setInput('');
@@ -41,7 +61,7 @@ export function ChatPanel() {
                 })
             });
 
-            const data = await res.json();
+            const data: ChatCompletionResponse = await res.json();
 
             if (data.choices && data.choices[0]) {
                 const assistMsg = data.choices[0].message;
@@ -50,12 +70,13 @@ export function ChatPanel() {
                 setMessages(prev => [...prev, { role: 'assistant', content: 'Error: No response from model.' }]);
             }
 
-        } catch (e: any) {
-            setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }]);
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${message}` }]);
         } finally {
             setLoading(false);
         }
-    };
+    }, [input, loading, messages]);
 
     return (
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -70,18 +91,7 @@ export function ChatPanel() {
                 gap: '1rem'
             }}>
                 {messages.map((msg, idx) => (
-                    <div key={idx} style={{
-                        alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        maxWidth: '80%',
-                        background: msg.role === 'user' ? 'var(--primary)' : 'var(--card-bg)',
-                        padding: '0.8rem 1.2rem',
-                        borderRadius: '12px',
-                        border: msg.role === 'user' ? 'none' : '1px solid var(--border)',
-                        whiteSpace: 'pre-wrap'
-                    }}>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.7, marginBottom: '0.25rem' }}>{msg.role.toUpperCase()}</div>
-                        {msg.content}
-                    </div>
+                    <MessageBubble key={idx} msg={msg} />
                 ))}
                 {loading && <div style={{ alignSelf: 'flex-start', padding: '1rem' }}>Typing...</div>}
                 <div ref={messagesEndRef} />
