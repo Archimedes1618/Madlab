@@ -81,6 +81,30 @@ def main():
     with open(args.config, 'r') as f:
         cfg = yaml.safe_load(f)
 
+    # Precision config
+    precision_cfg = cfg.get('precision', {})
+    use_fp16 = bool(precision_cfg.get('fp16', False))
+    use_bf16 = bool(precision_cfg.get('bf16', False))
+    if use_fp16:
+        amp_dtype = torch.float16
+        precision_mode = "FP16"
+    elif use_bf16:
+        amp_dtype = torch.bfloat16
+        precision_mode = "BF16"
+    else:
+        amp_dtype = torch.float32
+        precision_mode = "FP32"
+    print(json.dumps({
+    "message": f"Precision mode set to {precision_mode}",
+    "amp_dtype": str(amp_dtype)
+}))
+
+
+    # Gradient accumulation
+    grad_accum_steps = int(cfg['train'].get('grad_accum_steps', 1))
+    if grad_accum_steps < 1:
+        grad_accum_steps = 1
+
     # Strict Device Check
     requested_device = cfg['runtime']['device']
     if requested_device == 'cuda' and not torch.cuda.is_available():
@@ -157,13 +181,13 @@ def main():
                           collate_fn=collate_fn,
                           pin_memory=use_cuda)
     
-    # Optimizer
+    # Optimizer & Scheduler
     opt = torch.optim.AdamW(model.parameters(), lr=float(cfg['train']['lr']), weight_decay=cfg['train']['weight_decay'])
-    total_steps = cfg['train']['epochs'] * len(train_dl)
-    sch = get_linear_schedule_with_warmup(opt, num_warmup_steps=cfg['train']['warmup_steps'], num_training_steps=total_steps)
+    steps_per_epoch = math.ceil(len(train_dl) / grad_accum_steps)
+    total_opt_steps = cfg['train']['epochs'] * steps_per_epoch
+    sch = get_linear_schedule_with_warmup(opt, num_warmup_steps=min(cfg['train']['warmup_steps'], total_opt_steps), num_training_steps=total_opt_steps)
 
-    # AMP Scaler - Use new API if available, else legacy (compat)
-    # The user is seeing warnings, so let's use the new torch.amp API
+    # AMP Scaler
     scaler = torch.amp.GradScaler('cuda', enabled=use_cuda)
 
     step = 0
@@ -177,48 +201,49 @@ def main():
         for batch in train_dl:
             input_ids = batch['input_ids'].to(device)
             labels = batch['labels'].to(device)
-            
-            with torch.amp.autocast('cuda', enabled=use_cuda):
+
+            with torch.amp.autocast('cuda', enabled=use_cuda, dtype=amp_dtype):
                 out = model(input_ids=input_ids, labels=labels)
                 loss = out.loss
 
-            # NaN/Inf check to prevent training corruption
             if torch.isnan(loss) or torch.isinf(loss):
                 print(json.dumps({"warning": f"NaN/Inf loss detected at step {step}, skipping batch"}))
                 model.zero_grad()
                 continue
 
+            # Gradient accumulation
+            loss = loss / grad_accum_steps
             scaler.scale(loss).backward()
-            
-            scaler.unscale_(opt)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg['train']['grad_clip'])
-            
-            scaler.step(opt)
-            scaler.update()
-            
-            sch.step()
-            model.zero_grad()
+
+            if (step + 1) % grad_accum_steps == 0:
+                    # Unscale and clip once per optimizer cycle
+                    scaler.unscale_(opt)
+                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                                            cfg['train']['grad_clip'])
+
+                    scaler.step(opt)
+                    scaler.update()
+                    sch.step()
+                    model.zero_grad()
+
+                    # Log here, immediately after clipping but before zero_grad
+                    if step % cfg['train']['log_every'] == 0:
+                        print(json.dumps({
+                            'loss': float(loss.item() * grad_accum_steps),  # undo division for logging
+                            'grad_norm': float(grad_norm),
+                            'learning_rate': float(sch.get_last_lr()[0]),
+                            'epoch': float(epoch) + (step / total_opt_steps),
+                            'step': step
+                        }), flush=True)
+
             step += 1
-            
-            if step % cfg['train']['log_every'] == 0:
-                 grad_norm = 0.0
-                 for p in model.parameters():
-                     if p.grad is not None:
-                         grad_norm += p.grad.detach().data.norm().item() ** 2
-                 grad_norm = grad_norm ** 0.5
-                 
-                 print(json.dumps({
-                     'loss': float(loss.item()),
-                     'grad_norm': float(grad_norm),
-                     'learning_rate': float(sch.get_last_lr()[0]),
-                     'epoch': float(epoch) + (step / total_steps) * cfg['train']['epochs'], # rough approximation
-                     'step': step
-                 }), flush=True)
-            
+
             if step % cfg['train']['save_every'] == 0:
-                 model.save_pretrained(save_path)
-                 tok.save_pretrained(save_path)
-                 print(json.dumps({"message": "Checkpoint saved"}))
+                    model.save_pretrained(save_path)
+                    tok.save_pretrained(save_path)
+                    print(json.dumps({"message": "Checkpoint saved"}))
+
+
 
     # Final save
     print(json.dumps({"message": f"Saving model to {save_path}"}))
