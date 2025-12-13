@@ -209,10 +209,16 @@ madlab/
 - Check `nvidia-smi` works in terminal - note the CUDA version shown
 - Make sure you installed PyTorch with matching CUDA support (see Setup section)
 - Reinstall PyTorch with your CUDA version:
-  - CUDA 11.x: `pip install torch --index-url https://download.pytorch.org/whl/cu118`
-  - CUDA 12.1-12.3: `pip install torch --index-url https://download.pytorch.org/whl/cu121`
-  - CUDA 12.4-12.5: `pip install torch --index-url https://download.pytorch.org/whl/cu124`
-  - CUDA 12.6+: `pip install torch --index-url https://download.pytorch.org/whl/cu126`
+  - First, uninstall any existing installation:
+    - `pip uninstall torch torchvision torchaudio -y`
+  - CUDA 11.8 (older GPUs, GTX 10xx/16xx, RTX 20xx):
+    - `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
+  - CUDA 12.1 (RTX 30xx, RTX 40xx):
+    - `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121`
+  - CUDA 12.4 (RTX 40xx, newer drivers):
+    - `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124`
+  - CUDA 12.6 (latest stable, RTX 40xx/50xx):
+    - `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126`
 - Or just use CPU: set device to "CPU" in the UI (slower but works)
 
 ### "Model not found"
