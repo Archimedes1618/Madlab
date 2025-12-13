@@ -5,18 +5,33 @@ model:
   save_path: ../models/tuned
 data:
   path: ../data/Anthropic_AnthropicInterviewer.jsonl
-  max_samples: 500
+  max_samples: 1500
   val_split: 0.1
 train:
-  epochs: 1
   batch_size: 4
+  grad_accum_steps: 1
   max_seq_len: 256
   lr: 0.00005
+  lr_scheduler: cosine
+  lr_min: 0.000001
+  optimizer: adamw_8bit
+  gradient_checkpointing: true
+  epochs: 1
   weight_decay: 0
-  warmup_steps: 50
-  grad_clip: 1
   log_every: 1
   save_every: 100
+  warmup_steps: 50
+  grad_clip: 1
+  save_total_limit: 3
+  save_best_only: true
 runtime:
   device: cuda
-  workers: 8
+  workers: 12
+  pin_memory: true
+precision:
+  fp16: true
+  bf16: false
+  fp32: false
+logging:
+  tensorboard: true
+  log_every: 10
