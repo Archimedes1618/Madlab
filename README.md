@@ -25,7 +25,7 @@ cd madlab
 # Backend
 cd madlab-backend
 npm install
-cd trainer && python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt && cd ..
+cd trainer && python -m venv venv && venv\Scripts\activate && python setup.py && cd ..
 npm run build && npm start
 
 # Frontend (new terminal)
@@ -73,25 +73,9 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # For GPU training - first check your CUDA version: nvidia-smi
-# Then install PyTorch with matching CUDA version BEFORE requirements.txt:
+# Then install PyTorch with matching CUDA in setup.py:
 
-# CUDA 11.8 (older GPUs, GTX 10xx/16xx, RTX 20xx):
-pip install torch --index-url https://download.pytorch.org/whl/cu118
-
-# CUDA 12.1 (RTX 30xx, RTX 40xx):
-pip install torch --index-url https://download.pytorch.org/whl/cu121
-
-# CUDA 12.4 (RTX 40xx, newer drivers):
-pip install torch --index-url https://download.pytorch.org/whl/cu124
-
-# CUDA 12.6 (latest stable, RTX 40xx/50xx):
-pip install torch --index-url https://download.pytorch.org/whl/cu126
-
-# Then install remaining dependencies:
-pip install -r requirements.txt
-
-# For CPU-only (no GPU, slower but works everywhere):
-pip install -r requirements.txt
+python setup.py
 
 cd ..
 ```
