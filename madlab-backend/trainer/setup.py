@@ -1,6 +1,8 @@
 import sys
 import subprocess
 import time
+import threading
+import itertools
 
 ASCII_ART = r"""
                              %%%%%%%%%%%%%%%%                              
@@ -37,6 +39,10 @@ ASCII_ART = r"""
 """
 
 def run_step(cmd, label):
+    stop_event = threading.Event()
+    spin_thread = threading.Thread(target=spinner, args=(label, stop_event))
+    spin_thread.start()
+
     try:
         result = subprocess.run(
             cmd,
@@ -44,15 +50,26 @@ def run_step(cmd, label):
             stderr=subprocess.PIPE,
             text=True
         )
-        if result.returncode == 0:
-            print(f"{label:<30} | SUCCESS")
-        else:
-            print(f"{label:<30} | FAIL")
-            print("Error:", result.stderr.splitlines()[-1])
-        return result.returncode
-    except Exception as e:
-        print(f"{label:<30} | ERROR ({e})")
-        return 1
+    finally:
+        stop_event.set()
+        spin_thread.join()
+
+    if result.returncode == 0:
+        print(f"{label:<30} | [✓] SUCCESS")
+    else:
+        last_err = result.stderr.splitlines()[-1] if result.stderr else "unknown error"
+        print(f"{label:<30} | [✗] FAIL — {last_err}")
+    return result.returncode
+
+
+def spinner(label, stop_event):
+    for c in itertools.cycle(['|', '/', '-', '\\']):
+        if stop_event.is_set():
+            break
+        sys.stdout.write(f"\r{label:<30} | {c}")
+        sys.stdout.flush()
+        time.sleep(0.1)
+    sys.stdout.write("\r" + " " * 50 + "\r")  # clear line
 
 def main():
     # Render the static dashboard first (ASCII art + table + inline prompt)
@@ -102,4 +119,5 @@ def main():
     
 
 if __name__ == "__main__":
+
     main()
