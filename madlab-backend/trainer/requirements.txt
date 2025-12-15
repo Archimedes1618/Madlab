@@ -1,4 +1,4 @@
-# PyTorch - install BEFORE other requirements for GPU training
+# PyTorch - install BEFORE other requirements for GPU training(oudated since addition of setup.py)
 # Check your CUDA version with: nvidia-smi
 #
 # CUDA 11.8 (older GPUs, GTX 10xx/16xx, RTX 20xx):
@@ -16,16 +16,18 @@
 # CPU-only (no GPU, slower but works everywhere):
 #   pip install torch
 #
-torch>=2.0.0
 transformers
 accelerate
 peft
 bitsandbytes
 scipy
-huggingface_hub
+huggingface_hub[hf_xet]
 llama-cpp-python
-gguf
 protobuf
 sentencepiece
 datasets
-pandas
+Pandas
+mistral-common[image,audio]
+
+# Install gguf directly from llama.cpp repo
+https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.zip#subdirectory=gguf-py
