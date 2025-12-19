@@ -35,6 +35,8 @@ npm install && npm run dev
 
 Open `http://localhost:5173`
 
+<img width="1863" height="943" alt="image789" src="https://github.com/user-attachments/assets/c5863659-f8ca-4db1-9a97-c2ab66173000" />
+
 ---
 
 ## Requirements
@@ -53,6 +55,8 @@ Open `http://localhost:5173`
 ---
 
 ## Setup
+
+<img width="819" height="837" alt="image456" src="https://github.com/user-attachments/assets/20eea2c8-9dd7-4bf9-b620-7d5fa2d700db" />
 
 ### Backend
 
@@ -126,6 +130,8 @@ VITE_WS_URL=ws://localhost:8080/events
 ---
 
 ## Usage
+
+<img width="1863" height="948" alt="image123" src="https://github.com/user-attachments/assets/acc9e63b-1da2-41ae-a7e3-defd210294ab" />
 
 ### Basic Workflow
 
