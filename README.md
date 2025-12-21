@@ -196,9 +196,10 @@ madlab/
 ## Troubleshooting
 
 ### llama-cpp-python installation fails
-
 <img width="490" height="52" alt="image" src="https://github.com/user-attachments/assets/a3079c5f-3c08-4a56-b5a3-1fc4ade3d8ea" />
-- Replace the entire content of your requirements.txt with this block:
+
+Replace the entire content of your madlab-backend/trainer/requirements.txt with this block:
+
 ```
 transformers
 accelerate
@@ -212,8 +213,10 @@ datasets
 pandas
 mistral-common[image,audio]
 
+
 # Use custom llama-cpp-python wheel
 https://github.com/rookiemann/llama-cpp-python-py314-cuda131-wheel-or-python314-llama-cpp-gpu-wheel/releases/download/v0.3.16-cuda13.1-py3.14/llama_cpp_python-0.3.16-cp314-cp314-win_amd64.whl
+
 # Install gguf directly from llama.cpp repo
 https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.zip#subdirectory=gguf-py
 ```
