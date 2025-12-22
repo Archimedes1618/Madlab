@@ -236,6 +236,8 @@ https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.zip#subdirectory
     - `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124`
   - CUDA 12.6 (latest stable, RTX 40xx/50xx):
     - `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126`
+  - CUDA 13.0 (nightly, experimental support for RTX PRO 6000 Blackwell):
+    - `pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu130`
 - Or just use CPU: set device to "CPU" in the UI (slower but works)
 
 ### "Model not found"
