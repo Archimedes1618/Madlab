@@ -288,6 +288,6 @@ https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.zip#subdirectory
 
 ## License
 
-GPLv3 - See [LICENSE](LICENSE) file.
+AGPLv3 - See [LICENSE](LICENSE) file.
 
 Copyright (C) 2025 David Bentler
