@@ -4,6 +4,23 @@ import { broadcast } from '../server';
 import { CONFIG, getPythonPath } from '../config';
 import type { TrainingMetrics } from '../types';
 
+class LineBuffer {
+    private buffer = '';
+
+    push(chunk: string): string[] {
+        this.buffer += chunk;
+        const lines = this.buffer.split('\n');
+        this.buffer = lines.pop() || '';
+        return lines.filter(l => l.trim());
+    }
+
+    flush(): string[] {
+        const remaining = this.buffer.trim();
+        this.buffer = '';
+        return remaining ? [remaining] : [];
+    }
+}
+
 let runningProcess: ChildProcess | null = null;
 
 export function startTraining(configPath: string): void {
@@ -24,17 +41,18 @@ export function startTraining(configPath: string): void {
 
     broadcast({ type: 'status', payload: { running: true, pid: runningProcess.pid } });
 
+    const lineBuffer = new LineBuffer();
+
     runningProcess.stdout?.on('data', (data) => {
-        const lines = data.toString().trim().split('\n');
-        lines.forEach((line: string) => {
+        const lines = lineBuffer.push(data.toString());
+        for (const line of lines) {
             try {
                 const obj = JSON.parse(line) as TrainingMetrics | { message?: string; error?: string };
                 broadcast({ type: 'train-log', payload: obj });
             } catch {
-                // Not JSON, just raw text
                 console.log('[Trainer]', line);
             }
-        });
+        }
     });
 
     runningProcess.stderr?.on('data', (data) => {
@@ -50,6 +68,9 @@ export function startTraining(configPath: string): void {
     });
 
     runningProcess.on('close', (code) => {
+        for (const line of lineBuffer.flush()) {
+            console.log('[Trainer]', line);
+        }
         console.log(`Training process exited with code ${code}`);
         runningProcess = null;
         broadcast({ type: 'status', payload: { running: false, code: code ?? undefined } });

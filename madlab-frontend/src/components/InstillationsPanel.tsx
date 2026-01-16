@@ -22,6 +22,7 @@ export function InstillationsPanel() {
     const [testInput, setTestInput] = useState('');
     const [testResult, setTestResult] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [editingItem, setEditingItem] = useState<Instillation | null>(null);
 
     useEffect(() => {
         fetchItems();
@@ -85,6 +86,36 @@ export function InstillationsPanel() {
             fetchItems();
         } catch (e) {
             setError('Failed to delete rule. Please try again.');
+            console.error(e);
+        }
+    };
+
+    const handleToggle = async (item: Instillation) => {
+        try {
+            await fetch(`${API_URL}/instillations/${item.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: !item.enabled })
+            });
+            fetchItems();
+        } catch (e) {
+            setError('Failed to toggle rule.');
+            console.error(e);
+        }
+    };
+
+    const handleEdit = async () => {
+        if (!editingItem) return;
+        try {
+            await fetch(`${API_URL}/instillations/${editingItem.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editingItem)
+            });
+            setEditingItem(null);
+            fetchItems();
+        } catch (e) {
+            setError('Failed to update rule.');
             console.error(e);
         }
     };
@@ -167,10 +198,11 @@ export function InstillationsPanel() {
                 </div>
             </div>
 
-            <h3>Active Rules</h3>
+            <h3>Rules</h3>
             <table>
                 <thead>
                     <tr>
+                        <th>On</th>
                         <th>Trigger</th>
                         <th>Type</th>
                         <th>Response</th>
@@ -179,24 +211,49 @@ export function InstillationsPanel() {
                 </thead>
                 <tbody>
                     {items.map(item => (
-                        <tr key={item.id}>
+                        <tr key={item.id} style={{ opacity: item.enabled ? 1 : 0.5 }}>
+                            <td>
+                                <button onClick={() => handleToggle(item)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>
+                                    {item.enabled ? '✓' : '○'}
+                                </button>
+                            </td>
                             <td>{item.trigger}</td>
                             <td>{item.match.type}</td>
                             <td title={item.response}>
                                 {item.response.length > 50 ? item.response.substring(0, 50) + '...' : item.response}
                             </td>
                             <td>
-                                <button
-                                    onClick={() => handleDelete(item.id)}
-                                    style={{ background: 'var(--danger)', border: 'none', color: 'white', padding: '0.25rem 0.5rem' }}
-                                >
-                                    Delete
-                                </button>
+                                <button onClick={() => setEditingItem(item)} style={{ marginRight: '0.5rem', padding: '0.25rem 0.5rem' }}>Edit</button>
+                                <button onClick={() => handleDelete(item.id)} style={{ background: 'var(--danger)', border: 'none', color: 'white', padding: '0.25rem 0.5rem' }}>Delete</button>
                             </td>
                         </tr>
                     ))}
                 </tbody>
             </table>
+
+            {editingItem && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                    <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', width: '400px' }}>
+                        <h3>Edit Rule</h3>
+                        <label>Trigger
+                            <input value={editingItem.trigger} onChange={e => setEditingItem({...editingItem, trigger: e.target.value})} />
+                        </label>
+                        <label>Match Type
+                            <select value={editingItem.match.type} onChange={e => setEditingItem({...editingItem, match: {...editingItem.match, type: e.target.value as 'exact' | 'regex'}})}>
+                                <option value="exact">Exact</option>
+                                <option value="regex">Regex</option>
+                            </select>
+                        </label>
+                        <label>Response
+                            <textarea value={editingItem.response} onChange={e => setEditingItem({...editingItem, response: e.target.value})} rows={4} />
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                            <button onClick={handleEdit}>Save</button>
+                            <button onClick={() => setEditingItem(null)}>Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

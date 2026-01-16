@@ -4,7 +4,6 @@ import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import bodyParser from 'body-parser';
-import dotenv from 'dotenv';
 import instillationsRouter from './routes/instillations';
 import trainRouter from './routes/train';
 import datasetsRouter from './routes/datasets';
@@ -13,9 +12,6 @@ import proxyRouter from './routes/proxy';
 import { startFileMonitor } from './services/fileMonitor';
 import { CONFIG } from './config';
 import type { WebSocketMessage } from './types';
-
-// Load environment variables
-dotenv.config();
 
 // Ensure required directories exist on startup
 const requiredDirs = [CONFIG.DATA_DIR, CONFIG.MODELS_DIR];
@@ -48,6 +44,9 @@ app.use(cors({
     credentials: true
 }));
 app.use(bodyParser.json());
+
+// Static file serving for model artifacts
+app.use('/artifacts', express.static(CONFIG.MODELS_DIR, { fallthrough: false }));
 
 // Health check endpoint
 app.get('/health', (_req, res) => {

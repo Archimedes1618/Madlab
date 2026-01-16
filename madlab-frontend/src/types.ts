@@ -63,6 +63,7 @@ export interface TrainingConfig {
         log_every: number;
         save_every: number;
         val_every?: number;
+        grad_accum_steps: number;
     };
     runtime: {
         device: 'cpu' | 'cuda';

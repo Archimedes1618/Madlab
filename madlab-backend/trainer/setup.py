@@ -83,6 +83,8 @@ def main():
     print(f"{'2':<10}{'cu121':<20}{'https://download.pytorch.org/whl/cu121':<50}")
     print(f"{'3':<10}{'cu124':<20}{'https://download.pytorch.org/whl/cu124':<50}")
     print(f"{'4':<10}{'cu126':<20}{'https://download.pytorch.org/whl/cu126':<50}")
+    print(f"{'5':<10}{'cu128':<20}{'https://download.pytorch.org/whl/cu128':<50}")
+    print(f"{'6':<10}{'cu130':<20}{'https://download.pytorch.org/whl/cu130':<50}")
     print("-"*80)
     choice = input("Select CUDA version [1-4]: ").strip()
 
@@ -91,6 +93,8 @@ def main():
         "2": "https://download.pytorch.org/whl/cu121",
         "3": "https://download.pytorch.org/whl/cu124",
         "4": "https://download.pytorch.org/whl/cu126",
+        "5": "https://download.pytorch.org/whl/cu128",
+        "6": "https://download.pytorch.org/whl/cu130",
     }
 
     if choice not in cuda_map:

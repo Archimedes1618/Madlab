@@ -5,11 +5,13 @@
     "main": "dist/server.js",
     "scripts": {
         "start": "node dist/server.js",
-        "dev": "nodemon src/server.ts",
-        "build": "tsc && if not exist dist\\data mkdir dist\\data && copy src\\data\\instillations.json dist\\data\\"
+        "dev": "tsx watch src/server.ts",
+        "build": "tsc"
     },
     "dependencies": {
         "body-parser": "^1.20.2",
+        "chart.js": "^4.5.1",
+        "chartjs-node-canvas": "^5.0.0",
         "chokidar": "^3.5.3",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",
@@ -28,6 +30,7 @@
         "@types/node-fetch": "^2.6.13",
         "@types/ws": "^8.5.5",
         "nodemon": "^3.0.1",
+        "tsx": "^4.7.0",
         "typescript": "^5.1.6"
     }
 }

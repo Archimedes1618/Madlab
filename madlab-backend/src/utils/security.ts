@@ -42,3 +42,12 @@ export function validateFilename(filename: string): boolean {
 export function sanitizeForLog(str: string): string {
     return str.replace(/[\n\r]/g, ' ').substring(0, 500);
 }
+
+/**
+ * Check if path stays within allowed base directory (relative check)
+ */
+export function isPathSafe(userPath: string, allowedBase: string): boolean {
+    const normalized = path.normalize(userPath);
+    if (normalized.startsWith('..') || path.isAbsolute(normalized)) return false;
+    return normalized.startsWith(allowedBase + path.sep) || normalized === allowedBase || normalized.startsWith(allowedBase + '/');
+}

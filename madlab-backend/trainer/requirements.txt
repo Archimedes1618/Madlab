@@ -28,6 +28,7 @@ sentencepiece
 datasets
 Pandas
 mistral-common[image,audio]
+matplotlib
 
 # Install gguf directly from llama.cpp repo
 https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.zip#subdirectory=gguf-py

@@ -1,7 +1,9 @@
 # train.py
-import json, argparse, torch, math, sys, os, random
+import json, argparse, torch, math, sys, os, random, shutil
+from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
-from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup, get_constant_schedule_with_warmup, BitsAndBytesConfig
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel # Added PeftModel import
 
 # Ensure stdout is unbuffered for real-time logging
 sys.stdout.reconfigure(line_buffering=True)
@@ -70,6 +72,70 @@ def collate(batch, pad_id):
         labels.append(torch.cat([t['labels'], torch.full((pad_len,), -100)]))
     return {'input_ids': torch.stack(input_ids), 'labels': torch.stack(labels)}
 
+def evaluate(model, val_dl, device, use_cuda, amp_dtype):
+    model.eval()
+    total_loss = 0.0
+    count = 0
+    with torch.no_grad():
+        for batch in val_dl:
+            input_ids = batch['input_ids'].to(device)
+            labels = batch['labels'].to(device)
+            with torch.amp.autocast('cuda', enabled=use_cuda, dtype=amp_dtype):
+                out = model(input_ids=input_ids, labels=labels)
+            if not (torch.isnan(out.loss) or torch.isinf(out.loss)):
+                total_loss += out.loss.item()
+                count += 1
+    model.train()
+    return total_loss / count if count > 0 else float('inf')
+
+def merge_lora_for_gguf(model_name, tokenizer, save_path, peft_model):
+    """
+    Merges a PEFT (LoRA) model with its base model at full precision for GGUF conversion.
+    This function assumes the LoRA adapter is already loaded in the `peft_model` variable.
+    """
+    print(json.dumps({"message": "Starting LoRA merge process for GGUF export..."}))
+    
+    # 1. Define a temporary path to save the LoRA adapter
+    temp_adapter_path = os.path.join(save_path, "temp_lora_adapter")
+    os.makedirs(temp_adapter_path, exist_ok=True)
+
+    # 2. Save the LoRA adapter weights from the trained model
+    print(json.dumps({"message": f"Saving LoRA adapter to temporary directory: {temp_adapter_path}"}))
+    peft_model.save_pretrained(temp_adapter_path)
+    
+    # 3. Free up VRAM by deleting the quantized model
+    print(json.dumps({"message": "Unloading quantized model from memory to free VRAM..."}))
+    del peft_model
+    torch.cuda.empty_cache()
+
+    # 4. Reload the base model at FULL PRECISION (FP32)
+    print(json.dumps({"message": f"Reloading base model '{model_name}' at full precision (FP32)..."}))
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float32,  # Crucial: Load in full precision
+        device_map="auto"           # Use 'auto' to load onto GPU/CPU as needed
+    )
+
+    # 5. Load the LoRA adapter onto the full-precision base model
+    print(json.dumps({"message": "Applying LoRA adapter to full-precision model..."}))
+    model = PeftModel.from_pretrained(base_model, temp_adapter_path)
+    
+    # 6. Merge the adapter into the base model
+    print(json.dumps({"message": "Merging LoRA adapter with full-precision base model..."}))
+    merged_model = model.merge_and_unload()
+
+    # 7. Save the final, merged, full-precision model
+    print(json.dumps({"message": f"Saving final merged model to {save_path}..."}))
+    merged_model.save_pretrained(save_path)
+    tokenizer.save_pretrained(save_path)
+    
+    # 8. Clean up the temporary adapter directory
+    print(json.dumps({"message": f"Cleaning up temporary directory: {temp_adapter_path}"}))
+    shutil.rmtree(temp_adapter_path)
+
+    print(json.dumps({"message": "Merged model successfully saved at full precision. Ready for GGUF conversion."}))
+
+
 def main():
     import yaml
     ap = argparse.ArgumentParser()
@@ -118,16 +184,40 @@ def main():
 
     # Load Model & Tokenizer
     model_name = cfg['model']['name']
-    print(json.dumps({"message": f"Loading model {model_name}..."}))
-    
+    use_lora = cfg['model'].get('adapter') == 'Lora'
+    print(json.dumps({"message": f"Loading model {model_name}...", "adapter": "Lora" if use_lora else "none"}))
+
     try:
         tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-        # Ensure pad token exists
         if tok.pad_token is None:
             tok.pad_token = tok.eos_token
-            
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        model.to(device)
+
+        if use_lora:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=amp_dtype,
+                bnb_4bit_use_double_quant=True
+            )
+            model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config, device_map="auto")
+            model = prepare_model_for_kbit_training(model)
+            lora_config = LoraConfig(
+                r=cfg['model'].get('lora_r', 16),
+                lora_alpha=cfg['model'].get('lora_alpha', 32),
+                target_modules=cfg['model'].get('lora_target_modules', ["q_proj", "k_proj", "v_proj", "o_proj"]),
+                lora_dropout=cfg['model'].get('lora_dropout', 0.05),
+                bias="none",
+                task_type="CAUSAL_LM"
+            )
+            model = get_peft_model(model, lora_config)
+            model.print_trainable_parameters()
+        else:
+            model = AutoModelForCausalLM.from_pretrained(model_name)
+            model.to(device)
+
+        if cfg['train'].get('gradient_checkpointing', False):
+            model.gradient_checkpointing_enable()
+            print(json.dumps({"message": "Gradient checkpointing enabled"}))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
@@ -143,8 +233,11 @@ def main():
         print(json.dumps({"error": "Dataset is empty"}))
         sys.exit(1)
 
-    # FIX: Shuffle indices before splitting to prevent data leakage
-    # Previously, validation was always the first N samples which could bias results
+    max_samples = cfg['data'].get('max_samples')
+    if max_samples and max_samples < len(ds.samples):
+        ds.samples = random.sample(ds.samples, max_samples)
+        print(json.dumps({"message": f"Sampled {max_samples} from dataset"}))
+
     indices = list(range(len(ds)))
     random.shuffle(indices)
 
@@ -180,12 +273,31 @@ def main():
                           num_workers=cfg['runtime'].get('workers', 0),
                           collate_fn=collate_fn,
                           pin_memory=use_cuda)
-    
-    # Optimizer & Scheduler
-    opt = torch.optim.AdamW(model.parameters(), lr=float(cfg['train']['lr']), weight_decay=cfg['train']['weight_decay'])
+    val_dl = DataLoader(val_ds, batch_size=cfg['train']['batch_size'], shuffle=False,
+                        collate_fn=collate_fn, pin_memory=use_cuda) if len(val_ds) > 0 else None
+
+    # Optimizer
+    lr = float(cfg['train']['lr'])
+    weight_decay = cfg['train']['weight_decay']
+    optimizer_type = cfg['train'].get('optimizer', 'adamw')
+    if optimizer_type == 'adamw_8bit':
+        import bitsandbytes as bnb
+        opt = bnb.optim.AdamW8bit(model.parameters(), lr=lr, weight_decay=weight_decay)
+        print(json.dumps({"message": "Using 8-bit AdamW optimizer"}))
+    else:
+        opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    # Scheduler
     steps_per_epoch = math.ceil(len(train_dl) / grad_accum_steps)
     total_opt_steps = cfg['train']['epochs'] * steps_per_epoch
-    sch = get_linear_schedule_with_warmup(opt, num_warmup_steps=min(cfg['train']['warmup_steps'], total_opt_steps), num_training_steps=total_opt_steps)
+    warmup = min(cfg['train']['warmup_steps'], total_opt_steps)
+    scheduler_type = cfg['train'].get('lr_scheduler', 'linear')
+    if scheduler_type == 'cosine':
+        sch = get_cosine_schedule_with_warmup(opt, num_warmup_steps=warmup, num_training_steps=total_opt_steps)
+    elif scheduler_type == 'constant':
+        sch = get_constant_schedule_with_warmup(opt, num_warmup_steps=warmup)
+    else:
+        sch = get_linear_schedule_with_warmup(opt, num_warmup_steps=warmup, num_training_steps=total_opt_steps)
 
     # AMP Scaler
     scaler = torch.amp.GradScaler('cuda', enabled=use_cuda)
@@ -193,6 +305,11 @@ def main():
     step = 0
     save_path = cfg['model']['save_path']
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    best_val_loss = float('inf')
+    patience_counter = 0
+    patience = cfg['train'].get('early_stopping_patience', 0)
+    save_best_only = cfg['train'].get('save_best_only', False)
 
     print(json.dumps({"message": "Starting training loop"}))
 
@@ -243,12 +360,34 @@ def main():
                     tok.save_pretrained(save_path)
                     print(json.dumps({"message": "Checkpoint saved"}))
 
+        if val_dl:
+            val_loss = evaluate(model, val_dl, device, use_cuda, amp_dtype)
+            print(json.dumps({"val_loss": val_loss, "epoch": epoch + 1}))
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+                if save_best_only:
+                    model.save_pretrained(save_path)
+                    tok.save_pretrained(save_path)
+                    print(json.dumps({"message": "Best model saved"}))
+            elif patience > 0:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print(json.dumps({"message": f"Early stopping at epoch {epoch + 1}"}))
+                    break
 
+    if not (save_best_only and val_dl):
+        print(json.dumps({"message": f"Saving final LoRA checkpoint to {save_path}"}))
+        model.save_pretrained(save_path)
+        tok.save_pretrained(save_path)
 
-    # Final save
-    print(json.dumps({"message": f"Saving model to {save_path}"}))
-    model.save_pretrained(save_path)
-    tok.save_pretrained(save_path)
+    # --- NEW MERGE LOGIC ---
+    # Merge LoRA adapter into base model for GGUF conversion compatibility
+    if use_lora:
+        merge_lora_for_gguf(model_name, tok, save_path, model)
+    else:
+        print(json.dumps({"message": "No LoRA adapter used. Skipping merge for GGUF."}))
+
 
     # GPU memory cleanup
     if device.type == 'cuda':

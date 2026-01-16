@@ -52,7 +52,7 @@ export const MonitoringPanel = memo(function MonitoringPanel({ logs, metrics, fi
             </div>
 
             {/* File Sizes */}
-            <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+    {/*}        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
                 <h4 style={{ margin: '0 0 0.5rem 0' }}>File Sizes</h4>
                 {Object.entries(files).map(([name, size]) => (
                     <div key={name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>

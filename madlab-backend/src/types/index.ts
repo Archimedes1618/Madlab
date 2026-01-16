@@ -15,6 +15,7 @@ export interface TrainingConfig {
     };
     train: {
         epochs: number;
+        grad_accum_steps: number;
         batch_size: number;
         max_seq_len: number;
         lr: number;
@@ -24,6 +25,7 @@ export interface TrainingConfig {
         log_every: number;
         save_every: number;
         val_every?: number;
+        early_stopping_patience: number;
     };
     runtime: {
         device: 'cuda' | 'cpu';

@@ -37,6 +37,14 @@ router.get('/', async (_req, res) => {
 
 // POST /instillations
 router.post('/', async (req, res) => {
+    if (req.body.match?.type === 'regex') {
+        try {
+            new RegExp(req.body.trigger);
+        } catch {
+            return res.status(400).json({ error: { code: 'INVALID_REGEX', message: 'Invalid regex pattern' } });
+        }
+    }
+
     const pair: InstillationPair = {
         ...req.body,
         id: req.body.id || crypto.randomUUID(),
@@ -57,6 +65,14 @@ router.post('/', async (req, res) => {
 
 // PUT /instillations/:id
 router.put('/:id', async (req, res) => {
+    if (req.body.match?.type === 'regex' && req.body.trigger) {
+        try {
+            new RegExp(req.body.trigger);
+        } catch {
+            return res.status(400).json({ error: { code: 'INVALID_REGEX', message: 'Invalid regex pattern' } });
+        }
+    }
+
     const data = await readData();
     const idx = data.pairs.findIndex(p => p.id === req.params.id);
     if (idx === -1) {

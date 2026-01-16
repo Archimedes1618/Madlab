@@ -86,6 +86,9 @@ export function TrainingPanel() {
     const [judgeLimit, setJudgeLimit] = useState(20);
     const [judgeSharpness, setJudgeSharpness] = useState(50);
 
+    // Report viewer
+    const [viewingReport, setViewingReport] = useState<{ name: string; data: any } | null>(null);
+
     const handleJudge = async (modelName: string, quantization: string) => {
         try {
             await fetch(`${API_URL}/train/judge`, {
@@ -215,7 +218,7 @@ export function TrainingPanel() {
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                 <div>
-                    <h2>Training Control</h2>
+                    <h2>Training Control 🛠</h2>
 
                     {configData && (
                         <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -229,12 +232,16 @@ export function TrainingPanel() {
                                         placeholder="HuggingFace Repo ID"
                                         style={{ flex: 1 }}
                                     />
-                                    <button onClick={() => setShowModelBrowser(true)}>Browse HF</button>
+                                    <button onClick={() => setShowModelBrowser(true)}>Browse HF🤗</button>
                                 </div>
                                 <datalist id="models">
-                                    {modelHistory.map(m => <option key={m} value={m} />)}
-                                    <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0" />
-                                    <option value="mistralai/Mistral-7B-Instruct-v0.2" />
+                                    <span>Judge Sharpness</span>
+                                    {modelHistory.map(m => <option key={m} value={m} label='Last model' />)}
+                                    <option value="LiquidAI/LFM2-350M" />
+                                    <option value="LiquidAI/LFM2-700M" />
+                                    <option value="LiquidAI/LFM2-1.2B" />
+                                    <option value="LiquidAI/LFM2-2.6B" />
+                                    <option value="TinyLlama/TinyLlama-1.1B-Chat-v1.0" />                                    
                                 </datalist>
                             </label>
 
@@ -244,7 +251,26 @@ export function TrainingPanel() {
                                     onClose={() => setShowModelBrowser(false)}
                                 />
                             )}
-
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                            <label>
+                                Device
+                                <select value={configData.runtime.device} onChange={e => updateConfig('runtime', 'device', e.target.value)}>
+                                    <option value="cpu">CPU</option>
+                                    <option value="cuda">CUDA (GPU)</option>
+                                </select>
+                            </label>
+                            <label>
+                                Workers
+                                <input type="number" min="0" max="64" value={configData.runtime.workers || 0} onChange={e => updateConfig('runtime', 'workers', parseInt(e.target.value) || 0)} />
+                            </label>
+                            <label>
+                                Adapter
+                                <select value={configData.model.adapter} onChange={e => updateConfig('model', 'adapter', e.target.value)}>
+                                    <option value="none">None</option>
+                                    <option value="Lora">Lora</option>
+                                </select>
+                            </label>
+                            </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                                 <label>
                                     Epochs
@@ -262,21 +288,19 @@ export function TrainingPanel() {
                                 </label>
                                 <label>
                                     Max Seq Len
-                                    <input type="number" min="64" max="4096" value={configData.train.max_seq_len} onChange={e => updateConfig('train', 'max_seq_len', parseInt(e.target.value) || 512)} />
+                                    <input type="number" min="64" max="8192" value={configData.train.max_seq_len} onChange={e => updateConfig('train', 'max_seq_len', parseInt(e.target.value) || 512)} />
                                 </label>
                             </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                             <label>
-                                Device
-                                <select value={configData.runtime.device} onChange={e => updateConfig('runtime', 'device', e.target.value)}>
-                                    <option value="cpu">CPU</option>
-                                    <option value="cuda">CUDA (GPU)</option>
-                                </select>
+                                Save Every
+                                <input type="number" min="1" max="4096" value={configData.train.save_every || 100} onChange={e => updateConfig('train', 'save_every', parseInt(e.target.value) || 1)} />
                             </label>
                             <label>
-                                Workers
-                                <input type="number" min="0" max="8" value={configData.runtime.workers || 0} onChange={e => updateConfig('runtime', 'workers', parseInt(e.target.value) || 0)} />
+                                Gradual Accumulation
+                                <input type="number" min="0" max="64" value={configData.train.grad_accum_steps || 1} onChange={e => updateConfig('train', 'grad_accum_steps', parseInt(e.target.value) || 1)} />
                             </label>
-
+                            </div>
                             <button onClick={saveConfig} disabled={saving || status.running}>
                                 {saving ? 'Saving...' : 'Save Configuration'}
                             </button>
@@ -286,11 +310,11 @@ export function TrainingPanel() {
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1rem' }}>
                         {!status.running ? (
                             <button className="primary" onClick={handleStart} disabled={loading}>
-                                {loading ? 'Starting...' : 'Start Training'}
+                                {loading ? 'Starting...' : '▶ Start Training'}
                             </button>
                         ) : (
                             <button onClick={handleStop} style={{ background: 'var(--danger)', color: 'white', border: 'none' }}>
-                                Stop Training
+                               ⏹ Stop Training
                             </button>
                         )}
 
@@ -305,7 +329,7 @@ export function TrainingPanel() {
                 </div>
 
                 <div>
-                    <h2>Dataset Management</h2>
+                    <h2>Dataset Management 📁</h2>
                     <div style={{ marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                             <input type="file" id="datasetUpload" style={{ display: 'none' }} onChange={async (e) => {
@@ -317,7 +341,7 @@ export function TrainingPanel() {
                                 }
                             }} />
                             <label htmlFor="datasetUpload" className="button" style={{ cursor: 'pointer', background: '#3b82f6', padding: '0.5rem 1rem', borderRadius: '4px', color: 'white' }}>
-                                Upload .jsonl
+                               📂 Upload .jsonl
                             </label>
                             <button onClick={() => setShowGenerator(true)} style={{ background: '#8b5cf6', color: 'white' }}>
                                 ✨ Generate Synthetic Data
@@ -436,7 +460,7 @@ export function TrainingPanel() {
                         </div>
                     </div>
 
-                    <h2>GGUF Automation</h2>
+                    <h2>GGUF Automation 📦</h2>
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                         <button onClick={() => convertModel('f16')}>Convert f16 (Base)</button>
                         <button onClick={() => convertModel('q8_0')}>Convert Q8_0 (Quantized)</button>
@@ -447,20 +471,29 @@ export function TrainingPanel() {
                         {artifacts.map(f => (
                             <div key={f.name} style={{ background: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span>{f.name}</span>
-                                    {f.name.endsWith('.gguf') && (
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <button onClick={() => evaluateModel(f.name.replace(`-${f.name.includes('f16') ? 'f16' : 'q8_0'}.gguf`, ''), f.name.includes('f16') ? 'f16' : 'q8_0')}>
-                                                Eval (Static)
-                                            </button>
-                                            <button
-                                                onClick={() => handleJudge(f.name.replace(`-${f.name.includes('f16') ? 'f16' : 'q8_0'}.gguf`, ''), f.name.includes('f16') ? 'f16' : 'q8_0')}
-                                                style={{ background: 'linear-gradient(45deg, #6366f1, #a855f7)' }}
-                                            >
-                                                🪄 Magic Judge
-                                            </button>
-                                        </div>
-                                    )}
+                                    <a href={`${API_URL}${f.url}`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{f.name}</a>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        {f.name.endsWith('.json') && (
+                                            <button onClick={async () => {
+                                                const res = await fetch(`${API_URL}${f.url}`);
+                                                const data = await res.json();
+                                                setViewingReport({ name: f.name, data });
+                                            }}>🔍 View</button>
+                                        )}
+                                        {f.name.endsWith('.gguf') && (
+                                            <>
+                                                <button onClick={() => evaluateModel(f.name.replace(`-${f.name.includes('f16') ? 'f16' : 'q8_0'}.gguf`, ''), f.name.includes('f16') ? 'f16' : 'q8_0')}>
+                                                    Eval (Static)
+                                                </button>
+                                                <button
+                                                    onClick={() => handleJudge(f.name.replace(`-${f.name.includes('f16') ? 'f16' : 'q8_0'}.gguf`, ''), f.name.includes('f16') ? 'f16' : 'q8_0')}
+                                                    style={{ background: 'linear-gradient(45deg, #6366f1, #a855f7)' }}
+                                                >
+                                                    🪄 Magic Judge
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -468,6 +501,29 @@ export function TrainingPanel() {
                     </div>
                 </div>
             </div>
+
+            {viewingReport && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                    <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', maxWidth: '600px', maxHeight: '80vh', overflow: 'auto' }}>
+                        <h3>{viewingReport.name}</h3>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <strong>Accuracy:</strong> {((viewingReport.data.accuracy ?? viewingReport.data.static_accuracy) * 100).toFixed(1)}%
+                            {viewingReport.data.average_score !== undefined && <><br/><strong>Judge Score:</strong> {viewingReport.data.average_score.toFixed(1)}/10</>}
+                            {viewingReport.data.capability_index !== undefined && <><br/><strong>Capability Index:</strong> {viewingReport.data.capability_index.toFixed(1)}/100</>}
+                        </div>
+                        <h4>Worst Samples</h4>
+                        {viewingReport.data.samples?.filter((s: any) => !s.correct || (s.judgment?.score ?? 10) < 5).slice(0, 10).map((s: any, i: number) => (
+                            <div key={i} style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                                <div><strong>Input:</strong> {s.input}</div>
+                                <div><strong>Target:</strong> {s.target}</div>
+                                <div><strong>Output:</strong> {s.output}</div>
+                                {s.judgment && <div><strong>Score:</strong> {s.judgment.score}/10 - {s.judgment.reason}</div>}
+                            </div>
+                        ))}
+                        <button onClick={() => setViewingReport(null)} style={{ marginTop: '1rem' }}>Close</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

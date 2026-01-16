@@ -7,6 +7,7 @@ import { buildDataset } from '../services/datasetBuilder';
 import { convertToGGUF, evaluateGGUF, judgeModel } from '../services/modelConverter';
 import { CONFIG } from '../config';
 import { isValidQuantization, isValidSharpness, isValidEvalLimit, ALLOWED_QUANTIZATIONS } from '../utils/validation';
+import { isPathSafe } from '../utils/security';
 import type { TrainingConfig, ModelArtifact } from '../types';
 
 const router = express.Router();
@@ -16,9 +17,13 @@ router.post('/start', async (req, res) => {
     try {
         const { configPath } = req.body;
 
-        // 1. Build dataset
+        if (configPath && !isPathSafe(configPath, 'config')) {
+            return res.status(400).json({ error: { code: 'INVALID_PATH', message: 'configPath must be within config/' } });
+        }
+
+        // 1. Build instillations dataset (separate from training data)
         const count = await buildDataset();
-        console.log(`Dataset built with ${count} samples`);
+        console.log(`Instillations dataset: ${count} pairs (training uses data.path from config)`);
 
         // 2. Start training
         startTraining(configPath || 'config/train.yaml');
@@ -141,8 +146,12 @@ router.get('/artifacts', async (_req, res) => {
         if (!fs.existsSync(CONFIG.MODELS_DIR)) {
             return res.json([]);
         }
-        const files = fs.readdirSync(CONFIG.MODELS_DIR).filter(f => f.endsWith('.gguf') || f.endsWith('.json'));
-        const artifacts: ModelArtifact[] = files.map(f => ({ name: f, url: `/models/${f}` }));
+        const files = fs.readdirSync(CONFIG.MODELS_DIR).filter(f =>
+            f.endsWith('.gguf') || f.endsWith('.json') || f.endsWith('.png'));
+        const artifacts: ModelArtifact[] = files.map(f => ({
+            name: f,
+            url: `/artifacts/${encodeURIComponent(f)}`
+        }));
         res.json(artifacts);
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Failed to list artifacts';

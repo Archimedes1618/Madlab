@@ -77,19 +77,20 @@ router.post('/chat/completions', async (req, res) => {
             return res.status(upstreamRes.status).send(err);
         }
 
-        // Handle streaming
         if (stream) {
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
             if (upstreamRes.body) {
-                // @ts-ignore - node-fetch body type
-                const reader = upstreamRes.body.getReader();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    res.write(value);
-                }
+                upstreamRes.body.pipe(res);
+                upstreamRes.body.on('error', (err) => {
+                    console.error('[Proxy] Stream error:', err);
+                    res.end();
+                });
+                req.on('close', () => {
+                    (upstreamRes.body as any)?.destroy?.();
+                });
+            } else {
                 res.end();
             }
         } else {

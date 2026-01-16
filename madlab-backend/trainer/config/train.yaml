@@ -1,29 +1,38 @@
 model:
-  name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
-  adapter: lora
+  name: LiquidAI/LFM2-350M
+  adapter: none
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
   load_path: models/base
   save_path: ../models/tuned
 data:
-  path: ../data/Anthropic_AnthropicInterviewer.jsonl
+  path: ../data/merged__1_.jsonl
   max_samples: 1500
   val_split: 0.1
 train:
   batch_size: 4
   grad_accum_steps: 1
-  max_seq_len: 256
+  max_seq_len: 320
   lr: 0.00005
   lr_scheduler: cosine
   lr_min: 0.000001
   optimizer: adamw_8bit
   gradient_checkpointing: true
-  epochs: 1
+  epochs: 6
   weight_decay: 0
   log_every: 1
-  save_every: 100
+  save_every: 400
   warmup_steps: 50
   grad_clip: 1
   save_total_limit: 3
   save_best_only: true
+  early_stopping_patience: 3
 runtime:
   device: cuda
   workers: 12

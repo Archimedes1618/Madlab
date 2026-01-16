@@ -77,7 +77,7 @@ def evaluate():
                 "output": prediction,
                 "correct": is_correct
             })
-            
+            llm.reset()
             # Progress log every 10 samples
             if (i + 1) % 10 == 0:
                  print(json.dumps({"message": f"Processed {i+1}/{len(lines)} samples"}))
