@@ -1,7 +1,7 @@
 {
     "name": "madlab-backend",
     "version": "1.0.0",
-    "description": "Backend service for Madlab LM Studio plugin",
+    "description": "Backend service for Madlab",
     "main": "dist/server.js",
     "scripts": {
         "start": "node dist/server.js",
