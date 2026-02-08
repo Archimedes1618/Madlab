@@ -1,19 +1,31 @@
 {
   "name": "madlab-frontend",
   "private": true,
-  "version": "0.0.0",
+  "description": "Madlab Finetuning",
+  "author": "The Madlab Team - 2026",
+  "version": "0.5.0",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "electron:compile": "tsc -p electron/tsconfig.json && tsc -p electron/tsconfig.preload.json",
+    "electron:dev": "npm run electron:compile && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "cd ../madlab-backend && npm run build && cd ../madlab-frontend && npm run build && npm run electron:compile && electron-builder"
   },
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "concurrently": "^9.0.0",
+    "wait-on": "^8.0.0",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
@@ -25,6 +37,26 @@
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^3.1.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/user-event": "^14.6.1",
+    "jsdom": "^26.1.0"
+  },
+  "build": {
+    "appId": "com.madlab.app",
+    "productName": "MadLab",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "dist-electron/**/*"],
+    "extraResources": [
+      { "from": "../madlab-backend/dist", "to": "backend" },
+      { "from": "../madlab-backend/package.json", "to": "backend/package.json" },
+      { "from": "../madlab-backend/node_modules", "to": "backend/node_modules" },
+      { "from": "../madlab-backend/trainer", "to": "trainer", "filter": ["!venv/**"]}
+    ],
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
   }
 }

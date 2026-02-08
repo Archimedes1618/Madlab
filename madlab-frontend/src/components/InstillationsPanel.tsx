@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useEscapeKey } from '../hooks';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -35,6 +36,8 @@ export function InstillationsPanel() {
             return () => clearTimeout(timer);
         }
     }, [error]);
+
+    useEscapeKey(!!editingItem, () => setEditingItem(null));
 
     const fetchItems = async () => {
         try {
@@ -142,11 +145,18 @@ export function InstillationsPanel() {
 
             {error && (
                 <div style={{
+                    position: 'fixed',
+                    top: '4rem',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 999,
+                    minWidth: '300px',
+                    maxWidth: '500px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                     background: '#7f1d1d',
                     color: '#fecaca',
                     padding: '0.75rem 1rem',
                     borderRadius: '6px',
-                    marginBottom: '1rem',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center'
