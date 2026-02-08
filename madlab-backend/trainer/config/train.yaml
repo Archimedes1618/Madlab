@@ -1,6 +1,7 @@
 model:
   name: LiquidAI/LFM2-350M
   adapter: none
+  attn_implementation: auto
   lora_r: 16
   lora_alpha: 32
   lora_dropout: 0.05
@@ -12,19 +13,20 @@ model:
   load_path: models/base
   save_path: ../models/tuned
 data:
-  path: ../data/merged__1_.jsonl
+  path: ../data/merged__10_.jsonl
   max_samples: 1500
   val_split: 0.1
 train:
-  batch_size: 4
+  batch_size: 6
   grad_accum_steps: 1
   max_seq_len: 320
+  packing: false
   lr: 0.00005
   lr_scheduler: cosine
   lr_min: 0.000001
-  optimizer: adamw_8bit
+  optimizer: adamw_fused
   gradient_checkpointing: true
-  epochs: 6
+  epochs: 1
   weight_decay: 0
   log_every: 1
   save_every: 400
@@ -34,7 +36,7 @@ train:
   save_best_only: true
   early_stopping_patience: 3
 runtime:
-  device: cuda
+  device: cuda:0
   workers: 12
   pin_memory: true
 precision:

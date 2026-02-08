@@ -42,22 +42,6 @@ export interface TrainingMetrics {
     step: number;
 }
 
-// Training Status
-export interface TrainingStatus {
-    running: boolean;
-    pid?: number;
-    code?: number;
-    killed?: boolean;
-}
-
-// Dataset
-export interface Dataset {
-    name: string;
-    size: number;
-    selected: boolean;
-    created: Date;
-}
-
 // Instillation Pair
 export interface InstillationPair {
     id: string;
@@ -88,6 +72,8 @@ export interface WSStatusMessage {
         pid?: number;
         code?: number;
         killed?: boolean;
+        jobId?: string;
+        stopping?: boolean;
     };
 }
 
@@ -105,29 +91,19 @@ export interface WSFileSizeMessage {
     };
 }
 
-export type WebSocketMessage = WSStatusMessage | WSTrainLogMessage | WSFileSizeMessage;
-
-// API Response Wrapper
-export interface ApiResponse<T = unknown> {
-    success: boolean;
-    data?: T;
-    error?: {
-        code: string;
-        message: string;
-    };
+export interface Job {
+    id: string;
+    configPath: string;
+    status: 'queued' | 'running' | 'done' | 'failed';
+    createdAt: number;
 }
 
-// Error Codes
-export const ErrorCodes = {
-    PATH_TRAVERSAL: 'PATH_TRAVERSAL',
-    INVALID_INPUT: 'INVALID_INPUT',
-    NOT_FOUND: 'NOT_FOUND',
-    INTERNAL_ERROR: 'INTERNAL_ERROR',
-    UNAUTHORIZED: 'UNAUTHORIZED',
-    RATE_LIMITED: 'RATE_LIMITED',
-} as const;
+export interface WSQueueMessage {
+    type: 'queue';
+    payload: Job[];
+}
 
-export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
+export type WebSocketMessage = WSStatusMessage | WSTrainLogMessage | WSFileSizeMessage | WSQueueMessage;
 
 // LM Studio Response
 export interface LMStudioResponse {

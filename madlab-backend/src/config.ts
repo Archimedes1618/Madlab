@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import path from 'path';
+import fs from 'fs';
 
 // Centralized configuration
 export const CONFIG = {
@@ -26,23 +27,25 @@ export const CONFIG = {
     FETCH_TIMEOUT: parseInt(process.env.FETCH_TIMEOUT || '60000', 10),   // 60s default
     LLM_TIMEOUT: parseInt(process.env.LLM_TIMEOUT || '300000', 10),      // 5 min default
 
-    // Rate Limiting
-    RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    RATE_LIMIT_MAX: 100,
+    // Rate Limiting - 120 req/min (~2 req/sec) for active usage while preventing abuse
+    RATE_LIMIT_WINDOW_MS: 60 * 1000, // 1 minute
+    RATE_LIMIT_MAX: 120,
 } as const;
 
 // Python paths
 export function getPythonPath(): string {
-    const venvPythonWin = path.join(CONFIG.TRAINER_DIR, 'venv', 'Scripts', 'python.exe');
-    const venvPythonUnix = path.join(CONFIG.TRAINER_DIR, 'venv', 'bin', 'python');
+    if (process.platform === 'win32') {
+        const venvPythonWin = path.join(CONFIG.TRAINER_DIR, 'venv', 'Scripts', 'python.exe');
+        if (fs.existsSync(venvPythonWin)) {
+            return venvPythonWin;
+        }
+    } else {
+        const venvPythonUnix = path.join(CONFIG.TRAINER_DIR, 'venv', 'bin', 'python');
+        if (fs.existsSync(venvPythonUnix)) {
+            return venvPythonUnix;
+        }
+    }
 
-    // Check Windows first, then Unix
-    const fs = require('fs');
-    if (fs.existsSync(venvPythonWin)) {
-        return venvPythonWin;
-    }
-    if (fs.existsSync(venvPythonUnix)) {
-        return venvPythonUnix;
-    }
+    // Fallback to system python if venv isn't found
     return 'python';
 }

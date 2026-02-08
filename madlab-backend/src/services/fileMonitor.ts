@@ -1,10 +1,14 @@
 import chokidar from 'chokidar';
 import path from 'path';
-import { broadcast } from '../server';
 import fs from 'fs/promises';
 import { CONFIG } from '../config';
+import type { WebSocketMessage } from '../types';
 
-export async function startFileMonitor(): Promise<void> {
+type BroadcastFn = (data: WebSocketMessage) => void;
+let broadcastFn: BroadcastFn | null = null;
+
+export async function startFileMonitor(broadcast: BroadcastFn): Promise<void> {
+    broadcastFn = broadcast;
     console.log(`Starting file monitor on ${CONFIG.MODELS_DIR}`);
 
     // Ensure models dir exists before starting watcher
@@ -33,10 +37,11 @@ export async function startFileMonitor(): Promise<void> {
 }
 
 async function emitSize(filePath: string): Promise<void> {
+    if (!broadcastFn) return;
     try {
         const stats = await fs.stat(filePath);
         const name = path.basename(filePath);
-        broadcast({
+        broadcastFn({
             type: 'file-size',
             payload: {
                 file: name,

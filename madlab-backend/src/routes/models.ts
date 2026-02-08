@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import https from 'https';
 import type { HFModel } from '../types';
+import { getLineage } from '../services/lineage';
 
 const router = Router();
 
@@ -43,6 +44,21 @@ router.get('/search', async (req, res) => {
         console.error('HuggingFace API error:', e);
         res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Failed to connect to HuggingFace' } });
     });
+});
+
+// GET /models/:name/lineage
+router.get('/:name/lineage', async (req, res) => {
+    const lineage = await getLineage(req.params.name);
+    if (!lineage) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No lineage found' } });
+    res.json(lineage);
+});
+
+// GET /models/compare?models=a,b
+router.get('/compare', async (req, res) => {
+    const names = (req.query.models as string || '').split(',').filter(Boolean);
+    if (names.length < 2) return res.status(400).json({ error: { code: 'INVALID_PARAM', message: 'Need at least 2 models' } });
+    const results = await Promise.all(names.map(async n => ({ model: n, lineage: await getLineage(n) })));
+    res.json(results);
 });
 
 export const modelsRouter = router;
