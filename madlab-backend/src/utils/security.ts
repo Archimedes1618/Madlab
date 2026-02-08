@@ -37,17 +37,17 @@ export function validateFilename(filename: string): boolean {
 }
 
 /**
- * Sanitize string for logging (prevent log injection)
- */
-export function sanitizeForLog(str: string): string {
-    return str.replace(/[\n\r]/g, ' ').substring(0, 500);
-}
-
-/**
- * Check if path stays within allowed base directory (relative check)
+ * Check if path stays within allowed base directory.
+ * Uses path.resolve() to handle traversal attempts like "config/../../../etc/passwd"
  */
 export function isPathSafe(userPath: string, allowedBase: string): boolean {
-    const normalized = path.normalize(userPath);
-    if (normalized.startsWith('..') || path.isAbsolute(normalized)) return false;
-    return normalized.startsWith(allowedBase + path.sep) || normalized === allowedBase || normalized.startsWith(allowedBase + '/');
+    // Reject absolute paths and obvious traversal
+    if (path.isAbsolute(userPath) || userPath.includes('\0')) return false;
+    
+    // Resolve both paths to absolute form for comparison
+    const resolvedBase = path.resolve(allowedBase);
+    const resolvedPath = path.resolve(allowedBase, userPath);
+    
+    // Path must start with base directory
+    return resolvedPath === resolvedBase || resolvedPath.startsWith(resolvedBase + path.sep);
 }

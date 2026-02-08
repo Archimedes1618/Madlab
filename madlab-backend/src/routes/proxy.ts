@@ -1,10 +1,23 @@
 import express from 'express';
+import crypto from 'crypto';
+import { LRUCache } from 'lru-cache';
 import { fetchWithTimeout } from '../utils/fetch';
 import { getInstillations } from '../services/instillationsCache';
+import { isLMStudioHealthy, getLMStudioStatus } from '../services/lmStudioHealth';
 import { CONFIG } from '../config';
 import type { InstillationPair, LMStudioResponse } from '../types';
 
 const router = express.Router();
+
+// LRU cache for non-streaming completions
+const responseCache = new LRUCache<string, LMStudioResponse>({
+    max: 100,
+    ttl: 5 * 60 * 1000, // 5 minutes
+});
+let cacheHits = 0, cacheMisses = 0;
+
+const hashMessages = (messages: unknown[]): string =>
+    crypto.createHash('sha256').update(JSON.stringify(messages)).digest('hex');
 
 router.post('/chat/completions', async (req, res) => {
     try {
@@ -46,7 +59,7 @@ router.post('/chat/completions', async (req, res) => {
             }
 
             if (matched) {
-                console.log(`[Proxy] Instillation Matched: ${pair.trigger}`);
+                // console.log(`[Proxy] Instillation Matched: ${pair.trigger}`);
                 // Return OpenAI-compatible response
                 return res.json({
                     id: 'chatcmpl-madlab-' + Date.now(),
@@ -63,8 +76,25 @@ router.post('/chat/completions', async (req, res) => {
             }
         }
 
-        // 2. Proxy to LM Studio
-        console.log(`[Proxy] Forwarding to ${CONFIG.LM_STUDIO_URL}`);
+        // 2. Check cache (non-streaming only)
+        const cacheKey = !stream ? hashMessages(messages) : null;
+        if (cacheKey) {
+            const cached = responseCache.get(cacheKey);
+            if (cached) {
+                cacheHits++;
+                // console.log(`[Proxy] Cache HIT`);
+                return res.json(cached);
+            }
+            cacheMisses++;
+        }
+
+        // 3. Circuit breaker - fast fail if LM Studio is down
+        if (!isLMStudioHealthy()) {
+            return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'LM Studio is offline' } });
+        }
+
+        // 4. Proxy to LM Studio
+        // console.log(`[Proxy] Forwarding to ${CONFIG.LM_STUDIO_URL}`);
 
         const upstreamRes = await fetchWithTimeout(`${CONFIG.LM_STUDIO_URL}/v1/chat/completions`, {
             method: 'POST',
@@ -95,6 +125,7 @@ router.post('/chat/completions', async (req, res) => {
             }
         } else {
             const json = await upstreamRes.json() as LMStudioResponse;
+            if (cacheKey) responseCache.set(cacheKey, json);
             res.json(json);
         }
 
@@ -103,6 +134,16 @@ router.post('/chat/completions', async (req, res) => {
         const message = e instanceof Error ? e.message : 'Proxy error';
         res.status(500).json({ error: { code: 'INTERNAL_ERROR', message } });
     }
+});
+
+// Cache stats endpoint
+router.get('/cache-stats', (_req, res) => {
+    res.json({ hits: cacheHits, misses: cacheMisses, size: responseCache.size });
+});
+
+// LM Studio health endpoint
+router.get('/health/lmstudio', (_req, res) => {
+    res.json(getLMStudioStatus());
 });
 
 export default router;

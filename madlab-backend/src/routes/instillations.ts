@@ -1,32 +1,57 @@
 import express from 'express';
 import fs from 'fs/promises';
+import safe from 'safe-regex2';
 import { CONFIG } from '../config';
 import { invalidateCache, getInstillations } from '../services/instillationsCache';
 import type { InstillationPair, InstillationsData } from '../types';
 
-const router = express.Router();
-
-// Write lock to prevent race conditions on concurrent writes
-let writeLock = Promise.resolve();
-
-// Helper to read data
-async function readData(): Promise<InstillationsData> {
-    try {
-        const data = await fs.readFile(CONFIG.INSTILLATIONS_PATH, 'utf-8');
-        return JSON.parse(data);
-    } catch {
-        return { version: '1.0', pairs: [] };
-    }
+// Validates regex: must be syntactically valid and not vulnerable to ReDoS
+function validateRegex(pattern: string): string | null {
+    try { new RegExp(pattern); } catch { return 'Invalid regex syntax'; }
+    if (!safe(pattern)) return 'Regex vulnerable to ReDoS (exponential backtracking)';
+    return null;
 }
 
-// Helper to write data - uses lock to prevent race conditions, invalidates cache after write
-async function writeData(data: InstillationsData): Promise<void> {
-    const writeOperation = writeLock.then(async () => {
-        await fs.writeFile(CONFIG.INSTILLATIONS_PATH, JSON.stringify(data, null, 2));
-        invalidateCache();
+const router = express.Router();
+
+// Read-write lock: serializes all file operations to prevent races
+let fileLock = Promise.resolve();
+
+// Helper to read data under lock
+async function readData(): Promise<InstillationsData> {
+    return new Promise((resolve) => {
+        fileLock = fileLock.then(async () => {
+            try {
+                const data = await fs.readFile(CONFIG.INSTILLATIONS_PATH, 'utf-8');
+                resolve(JSON.parse(data));
+            } catch {
+                resolve({ version: '1.0', pairs: [] });
+            }
+        }).catch(() => resolve({ version: '1.0', pairs: [] }));
     });
-    writeLock = writeOperation.catch(() => {}); // Prevent lock from breaking on error
-    return writeOperation;
+}
+
+// Helper for read-modify-write under lock
+async function modifyData(fn: (data: InstillationsData) => InstillationsData | Promise<InstillationsData>): Promise<InstillationsData> {
+    return new Promise((resolve, reject) => {
+        fileLock = fileLock.then(async () => {
+            try {
+                let data: InstillationsData;
+                try {
+                    const raw = await fs.readFile(CONFIG.INSTILLATIONS_PATH, 'utf-8');
+                    data = JSON.parse(raw);
+                } catch {
+                    data = { version: '1.0', pairs: [] };
+                }
+                data = await fn(data);
+                await fs.writeFile(CONFIG.INSTILLATIONS_PATH, JSON.stringify(data, null, 2));
+                invalidateCache();
+                resolve(data);
+            } catch (err) {
+                reject(err);
+            }
+        }).catch(reject);
+    });
 }
 
 // GET /instillations
@@ -35,64 +60,111 @@ router.get('/', async (_req, res) => {
     res.json(data);
 });
 
+// GET /instillations/export - Export all instillations
+router.get('/export', async (_req, res) => {
+    const data = await readData();
+    res.json({ exportedAt: new Date().toISOString(), pairs: data.pairs });
+});
+
+// POST /instillations/import - Import instillations (skip duplicates by trigger)
+router.post('/import', async (req, res) => {
+    const { pairs } = req.body;
+    if (!Array.isArray(pairs)) return res.status(400).json({ error: { code: 'INVALID_FORMAT', message: 'Expected { pairs: [...] }' } });
+
+    // Validate all regex patterns first
+    for (const p of pairs) {
+        if (p.match?.type === 'regex') {
+            const err = validateRegex(p.trigger);
+            if (err) return res.status(400).json({ error: { code: 'INVALID_REGEX', message: `${err} in trigger: ${p.trigger}` } });
+        }
+    }
+
+    let imported = 0, skipped = 0;
+    await modifyData((data) => {
+        const existingTriggers = new Set(data.pairs.map(p => p.trigger));
+        for (const p of pairs) {
+            if (existingTriggers.has(p.trigger)) { skipped++; continue; }
+            data.pairs.push({
+                ...p,
+                id: crypto.randomUUID(),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
+            existingTriggers.add(p.trigger);
+            imported++;
+        }
+        return data;
+    });
+    res.json({ imported, skipped });
+});
+
 // POST /instillations
 router.post('/', async (req, res) => {
     if (req.body.match?.type === 'regex') {
-        try {
-            new RegExp(req.body.trigger);
-        } catch {
-            return res.status(400).json({ error: { code: 'INVALID_REGEX', message: 'Invalid regex pattern' } });
-        }
+        const err = validateRegex(req.body.trigger);
+        if (err) return res.status(400).json({ error: { code: 'INVALID_REGEX', message: err } });
     }
 
     const pair: InstillationPair = {
         ...req.body,
-        id: req.body.id || crypto.randomUUID(),
+        id: req.body.id || crypto.randomUUID() || Math.random().toString(36).substring(2) + Date.now().toString(36),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
 
-    // Simple UUID fallback if crypto not global (Node < 19)
-    if (!pair.id) {
-        pair.id = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    try {
+        await modifyData((data) => {
+            data.pairs.push(pair);
+            return data;
+        });
+        res.json(pair);
+    } catch (err) {
+        res.status(500).json({ error: { code: 'WRITE_ERROR', message: 'Failed to save' } });
     }
-
-    const data = await readData();
-    data.pairs.push(pair);
-    await writeData(data);
-    res.json(pair);
 });
 
 // PUT /instillations/:id
 router.put('/:id', async (req, res) => {
     if (req.body.match?.type === 'regex' && req.body.trigger) {
-        try {
-            new RegExp(req.body.trigger);
-        } catch {
-            return res.status(400).json({ error: { code: 'INVALID_REGEX', message: 'Invalid regex pattern' } });
-        }
+        const err = validateRegex(req.body.trigger);
+        if (err) return res.status(400).json({ error: { code: 'INVALID_REGEX', message: err } });
     }
 
-    const data = await readData();
-    const idx = data.pairs.findIndex(p => p.id === req.params.id);
-    if (idx === -1) {
-        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    try {
+        let updated: InstillationPair | null = null;
+        await modifyData((data) => {
+            const idx = data.pairs.findIndex(p => p.id === req.params.id);
+            if (idx === -1) return data;
+            data.pairs[idx] = { ...data.pairs[idx], ...req.body, updatedAt: new Date().toISOString() };
+            updated = data.pairs[idx];
+            return data;
+        });
+        if (!updated) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+        }
+        res.json(updated);
+    } catch {
+        res.status(500).json({ error: { code: 'WRITE_ERROR', message: 'Failed to save' } });
     }
-    data.pairs[idx] = { ...data.pairs[idx], ...req.body, updatedAt: new Date().toISOString() };
-    await writeData(data);
-    res.json(data.pairs[idx]);
 });
 
 // DELETE /instillations/:id
 router.delete('/:id', async (req, res) => {
-    const data = await readData();
-    const idx = data.pairs.findIndex(p => p.id === req.params.id);
-    if (idx === -1) {
-        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    try {
+        let deleted: InstillationPair | null = null;
+        await modifyData((data) => {
+            const idx = data.pairs.findIndex(p => p.id === req.params.id);
+            if (idx === -1) return data;
+            deleted = data.pairs.splice(idx, 1)[0];
+            return data;
+        });
+        if (!deleted) {
+            return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+        }
+        res.json(deleted);
+    } catch {
+        res.status(500).json({ error: { code: 'WRITE_ERROR', message: 'Failed to delete' } });
     }
-    const deleted = data.pairs.splice(idx, 1);
-    await writeData(data);
-    res.json(deleted[0]);
 });
 
 // POST /resolve - Check overrides (uses cache for performance)

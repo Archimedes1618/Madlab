@@ -1,0 +1,3 @@
+{"input": "What is 2+2?", "target": "4"}
+{bad json here
+{"input": "Capital of France?", "target": "Paris"}

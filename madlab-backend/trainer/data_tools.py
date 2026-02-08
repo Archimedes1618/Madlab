@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import pandas as pd
 from datasets import load_dataset
 import sys
@@ -8,6 +9,20 @@ import sys
 def safe_open_w(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return open(path, 'w', encoding='utf-8')
+
+def load_file(path: str) -> pd.DataFrame:
+    """Load data from csv/parquet/json/jsonl by extension."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.csv':
+        return pd.read_csv(path)
+    elif ext == '.parquet':
+        return pd.read_parquet(path)
+    elif ext == '.json':
+        return pd.read_json(path)
+    elif ext == '.jsonl':
+        return pd.read_json(path, lines=True)
+    else:
+        raise ValueError(f"Unsupported format: {ext}. Use .csv, .parquet, .json, or .jsonl")
 
 def normalize_columns(row):
     # Suppress HF warnings
@@ -59,19 +74,13 @@ def cmd_inspect(args):
 def cmd_import(args):
     print(json.dumps({"message": f"Loading dataset {args.repo}..."}))
     
-    transform_func = None
-    if args.transform_script:
-        try:
-            # Safe-ish exec: define function in local scope
-            # Script must define a function named 'transform_row'
-            local_scope = {}
-            exec(args.transform_script, {}, local_scope)
-            transform_func = local_scope.get('transform_row')
-            if not transform_func:
-                raise ValueError("Script must define 'transform_row(row)'")
-        except Exception as e:
-            print(json.dumps({"error": f"Invalid transform script: {e}"}))
-            sys.exit(1)
+    # Column mapping - predefined safe mappings only
+    column_map = None
+    if args.input_col or args.output_col:
+        column_map = {
+            'input': args.input_col,
+            'output': args.output_col
+        }
             
     try:
         ds = load_dataset(args.repo, split=args.split)
@@ -82,12 +91,11 @@ def cmd_import(args):
         skipped = 0
         with safe_open_w(outfile) as f:
             for item in ds:
-                if transform_func:
-                    try:
-                        norm = transform_func(item)
-                    except Exception as e:
-                        skipped += 1
-                        continue
+                if column_map:
+                    # Use explicit column mapping
+                    inp = str(item.get(column_map['input'], '')).strip() if column_map['input'] else ''
+                    out = str(item.get(column_map['output'], '')).strip() if column_map['output'] else ''
+                    norm = {'input': inp, 'target': out}
                 else:
                     norm = normalize_columns(item)
 
@@ -100,7 +108,7 @@ def cmd_import(args):
         result = {"message": "Import successful", "filename": os.path.basename(outfile), "count": count}
         if skipped > 0:
             result["skipped"] = skipped
-            print(json.dumps({"warning": f"Skipped {skipped} rows (missing input/target or transform error)"}))
+            print(json.dumps({"warning": f"Skipped {skipped} rows (missing input/target)"}))
         print(json.dumps(result))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
@@ -109,7 +117,7 @@ def cmd_import(args):
 def cmd_clean(args):
     print(json.dumps({"message": f"Cleaning {args.file}..."}))
     try:
-        df = pd.read_json(args.file, lines=True)
+        df = load_file(args.file)
         initial_count = len(df)
         
         # Deduplicate
@@ -127,6 +135,85 @@ def cmd_clean(args):
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
 
+def cmd_profile(args):
+    try:
+        df = load_file(args.file)
+        rows = len(df)
+        duplicates = rows - len(df.drop_duplicates())
+        
+        # Count empty fields per column
+        empty_counts = {col: int(df[col].isna().sum() + (df[col].astype(str).str.strip() == '').sum()) 
+                        for col in df.columns}
+        
+        # Length stats for string columns
+        length_stats = {}
+        for col in df.columns:
+            lengths = df[col].astype(str).str.len()
+            length_stats[col] = {
+                "min": int(lengths.min()),
+                "max": int(lengths.max()),
+                "avg": round(lengths.mean(), 1)
+            }
+        
+        result = {
+            "rows": rows,
+            "columns": list(df.columns),
+            "duplicates": duplicates,
+            "empty_fields": empty_counts,
+            "length_stats": length_stats
+        }
+        print(json.dumps(result))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
+
+DEFAULT_RULES = [
+    {"field": "input", "check": "no_empty"},
+    {"field": "target", "check": "no_empty"},
+    {"field": "input", "check": "min_len", "value": 5},
+    {"field": "target", "check": "min_len", "value": 5},
+    {"field": "input", "check": "max_len", "value": 8000},
+    {"field": "target", "check": "max_len", "value": 8000},
+]
+
+def cmd_validate(args):
+    try:
+        df = load_file(args.file)
+        rules = json.load(open(args.rules)) if args.rules else DEFAULT_RULES
+        violations = []
+        seen = {}  # for no_duplicates check
+        
+        for idx, row in df.iterrows():
+            row_num = idx + 1
+            for rule in rules:
+                field, check = rule["field"], rule["check"]
+                val = str(row.get(field, ""))
+                
+                if check == "no_empty" and not val.strip():
+                    violations.append({"row": row_num, "field": field, "check": check, "msg": "empty value"})
+                elif check == "min_len" and len(val) < rule["value"]:
+                    violations.append({"row": row_num, "field": field, "check": check, "msg": f"len {len(val)} < {rule['value']}"})
+                elif check == "max_len" and len(val) > rule["value"]:
+                    violations.append({"row": row_num, "field": field, "check": check, "msg": f"len {len(val)} > {rule['value']}"})
+                elif check == "regex" and not re.search(rule["value"], val):
+                    violations.append({"row": row_num, "field": field, "check": check, "msg": f"no match for /{rule['value']}/"})
+                elif check == "no_duplicates":
+                    key = (field, val)
+                    if key in seen:
+                        violations.append({"row": row_num, "field": field, "check": check, "msg": f"duplicate of row {seen[key]}"})
+                    else:
+                        seen[key] = row_num
+
+        result = {"valid": len(violations) == 0, "rows": len(df), "violations": len(violations)}
+        if violations:
+            result["details"] = violations[:100]  # cap output
+            if len(violations) > 100:
+                result["truncated"] = True
+        print(json.dumps(result))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest='command')
@@ -139,10 +226,18 @@ def main():
     p_import.add_argument('--repo', required=True)
     p_import.add_argument('--split', default='train')
     p_import.add_argument('--out_dir', required=True)
-    p_import.add_argument('--transform_script', help="Python code defining transform_row(row)")
+    p_import.add_argument('--input_col', help="Column name to use as input")
+    p_import.add_argument('--output_col', help="Column name to use as target/output")
     
     p_clean = subparsers.add_parser('clean')
     p_clean.add_argument('--file', required=True)
+    
+    p_profile = subparsers.add_parser('profile')
+    p_profile.add_argument('--file', required=True)
+    
+    p_validate = subparsers.add_parser('validate')
+    p_validate.add_argument('--file', required=True)
+    p_validate.add_argument('--rules', help='JSON file with validation rules')
     
     args = parser.parse_args()
     
@@ -152,6 +247,10 @@ def main():
         cmd_import(args)
     elif args.command == 'clean':
         cmd_clean(args)
+    elif args.command == 'profile':
+        cmd_profile(args)
+    elif args.command == 'validate':
+        cmd_validate(args)
     else:
         parser.print_help()
 

@@ -11,7 +11,7 @@ export interface LogPayload {
 }
 
 export interface LogLine {
-    id: number;
+    id: string;
     type: LogType | string;
     payload: string | LogPayload;
     timestamp: string;
@@ -24,12 +24,6 @@ export interface TrainingMetrics {
     learning_rate?: number;
     epoch?: number;
     step?: number;
-}
-
-export interface MonitoringState {
-    logs: LogLine[];
-    metrics: TrainingMetrics;
-    files: Record<string, number>;
 }
 
 // Model artifacts
@@ -64,6 +58,18 @@ export interface TrainingConfig {
         save_every: number;
         val_every?: number;
         grad_accum_steps: number;
+        early_stopping_patience: number;
+        save_total_limit: number;
+        gradient_checkpointing: boolean;
+        packing: boolean;
+        save_best_only: boolean;
+        lr_scheduler: string;
+        optimizer: string;
+    };
+    precision: {
+        fp16: boolean;
+        bf16: boolean;
+        fp32: boolean;
     };
     runtime: {
         device: 'cpu' | 'cuda';
@@ -85,31 +91,8 @@ export interface DatasetInfo {
     created: string;
 }
 
-// Instillation types
-export interface InstillationMatch {
-    type: 'exact' | 'regex' | 'semantic';
-    caseInsensitive?: boolean;
-    normalizeWhitespace?: boolean;
-}
-
-export interface Instillation {
-    id: string;
-    trigger: string;
-    match: InstillationMatch;
-    response: string;
-    enabled: boolean;
-}
-
 // Chat message
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
     content: string;
-}
-
-// API Error response
-export interface ApiError {
-    error: {
-        code: string;
-        message: string;
-    };
 }

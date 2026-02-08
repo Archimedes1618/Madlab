@@ -86,7 +86,7 @@ def main():
     print(f"{'5':<10}{'cu128':<20}{'https://download.pytorch.org/whl/cu128':<50}")
     print(f"{'6':<10}{'cu130':<20}{'https://download.pytorch.org/whl/cu130':<50}")
     print("-"*80)
-    choice = input("Select CUDA version [1-4]: ").strip()
+    choice = input("Select CUDA version [1-6]: ").strip()
 
     cuda_map = {
         "1": "https://download.pytorch.org/whl/cu118",

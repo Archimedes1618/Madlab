@@ -15,6 +15,61 @@ Madlab is a self-hosted tool for fine-tuning language models on your own hardwar
 
 ---
 
+## Features
+
+### Training
+- **LoRA/QLoRA fine-tuning** with configurable rank, alpha, dropout
+- **NEFTune** - Noisy embeddings for +3-5% quality boost
+- **DoRA** - Weight-decomposed LoRA for better quality at same rank
+- **Config presets** - Quick Test, Small Model, Large Model, Quality Fine-tune
+- **Job queue** - Queue multiple training runs, auto-start next
+- **Checkpoint resume** - Save progress, resume on crash
+- **Graceful cancellation** - SIGINT allows checkpoint save before stop
+- **Real-time loss chart** - Visual training progress in Monitoring tab
+- **Progress timeline** - ETA based on epoch duration
+
+### Dataset Management
+- **Multi-format import** - CSV, Parquet, JSON, JSONL
+- **Dataset profiling** - Row count, duplicates, length stats
+- **Dataset versioning** - Track changes, rollback to previous versions
+- **Dataset preview** - Inspect samples + validation before training
+- **Validation rules** - Custom quality checks (min/max length, regex, etc.)
+- **LLM-powered augmentation** - Expand datasets via paraphrasing
+
+### Evaluation
+- **BLEU/ROUGE metrics** - Fuzzy matching alongside exact match
+- **LLM Judge** - AI-powered output quality scoring
+- **Auto test case generator** - Generate adversarial/edge case inputs
+- **Failure analysis** - LLM explains why model failed specific samples
+
+### LLM-Powered Features (via LM Studio)
+- **Magic Import** - Auto-format any HuggingFace dataset
+- **Dataset quality analyzer** - LLM rates training sample quality
+- **Hyperparameter advisor** - LLM suggests optimal training config
+- **Synthetic data generation** - Generate training data from examples
+
+### Infrastructure
+- **Health dashboard** - CPU, memory, disk, GPU monitoring
+- **Audit logging** - Track all sensitive operations
+- **Structured logging** - JSON logs with request timing metrics
+- **Project backup/restore** - Export/import full project state
+- **Model lineage tracking** - Full provenance for reproducibility
+- **Response caching** - LRU cache for LLM proxy requests
+- **LM Studio health probe** - Circuit breaker for upstream failures
+
+### UI/UX
+- **Command palette** - Ctrl/Cmd+K for quick actions
+- **Keyboard shortcuts** - Ctrl+1/2/3/4 for tab navigation
+- **Dark/Light theme** - Toggle in header
+- **Toast notifications** - Consistent feedback across panels
+- **WebSocket status** - Connection indicator in header
+- **Export bundle** - One-click ZIP of model + config + dataset
+
+### Desktop App (Experimental)
+- **Electron packaging** - Run as standalone desktop app
+
+---
+
 ## Quick Start
 
 ```bash

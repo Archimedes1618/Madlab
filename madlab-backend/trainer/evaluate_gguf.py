@@ -1,5 +1,16 @@
 import sys, json, os, argparse
 from llama_cpp import Llama
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from rouge_score import rouge_scorer
+
+def compute_metrics(pred, target):
+    if not pred or not target:
+        return {"correct": pred == target, "bleu": 0.0, "rouge_l": 0.0}
+    ref_tokens, pred_tokens = target.split(), pred.split()
+    bleu = sentence_bleu([ref_tokens], pred_tokens, smoothing_function=SmoothingFunction().method1)
+    scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+    rouge_l = scorer.score(target, pred)['rougeL'].fmeasure
+    return {"correct": pred == target, "bleu": bleu, "rouge_l": rouge_l}
 
 def evaluate():
     parser = argparse.ArgumentParser()
@@ -60,24 +71,25 @@ def evaluate():
         target = sample.get("target", "")
         
         # Simple prompt format compatible with the training
-        # Training used: "Input: {input}\nOutput:"
-        full_prompt = f"Input: {prompt}\nOutput:"
+        # Training uses: "Input: {input}\nOutput: " (with trailing space)
+        full_prompt = f"Input: {prompt}\nOutput: "
         
         try:
             output = llm(full_prompt, max_tokens=64, stop=["Input:", "\n"], echo=False)
             prediction = output["choices"][0]["text"].strip()
             
-            is_correct = (prediction == target)
-            if is_correct: correct_count += 1
+            metrics = compute_metrics(prediction, target)
+            if metrics["correct"]: correct_count += 1
             total_count += 1
             
             results.append({
                 "input": prompt,
                 "target": target,
                 "output": prediction,
-                "correct": is_correct
+                **metrics
             })
-            llm.reset()
+            if hasattr(llm, 'reset'):
+                llm.reset()
             # Progress log every 10 samples
             if (i + 1) % 10 == 0:
                  print(json.dumps({"message": f"Processed {i+1}/{len(lines)} samples"}))
@@ -86,8 +98,12 @@ def evaluate():
             print(json.dumps({"error": f"Error on sample {i}: {str(e)}"}))
 
     accuracy = correct_count / total_count if total_count > 0 else 0
+    avg_bleu = sum(r["bleu"] for r in results) / len(results) if results else 0
+    avg_rouge = sum(r["rouge_l"] for r in results) / len(results) if results else 0
     report = {
         "accuracy": accuracy,
+        "bleu": avg_bleu,
+        "rouge_l": avg_rouge,
         "total_samples": total_count,
         "correct_samples": correct_count,
         "skipped_samples": skipped_count,
@@ -97,13 +113,15 @@ def evaluate():
     if skipped_count > 0:
         print(json.dumps({"warning": f"Skipped {skipped_count} samples due to parse errors"}))
 
-    # Ensure output dir exists
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    # Ensure output dir exists (if path has a directory component)
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     with open(out_path, "w", encoding='utf-8') as f:
         json.dump(report, f, indent=2)
 
-    print(json.dumps({"message": "Evaluation complete", "report_path": out_path, "accuracy": accuracy}))
+    print(json.dumps({"message": "Evaluation complete", "report_path": out_path, "accuracy": accuracy, "bleu": avg_bleu, "rouge_l": avg_rouge}))
 
 if __name__ == "__main__":
     evaluate()
